@@ -4,6 +4,7 @@
  * and the AI layer integrated into each workspace rather than isolated as a generic chat.
  */
 import { useEffect, useMemo, useState } from "react";
+import { useTheme } from "@/contexts/ThemeContext";
 import {
   Bell,
   BookOpen,
@@ -24,22 +25,28 @@ import {
   LayoutDashboard,
   Maximize2,
   MoreHorizontal,
+  Moon,
   PanelRightClose,
   Play,
   Plus,
   Presentation,
+  PlugZap,
   Search,
   Send,
   Settings2,
+  ShieldCheck,
   SlidersHorizontal,
   Sparkles,
+  Sun,
   TerminalSquare,
+  UserRound,
   WandSparkles,
   X,
 } from "lucide-react";
 
 type Language = "ar" | "en";
 type Workspace = "dashboard" | "programming" | "presentations" | "mind" | "settings";
+type SettingsSection = "general" | "appearance" | "workspace" | "agents" | "notifications" | "integrations" | "security";
 
 const content = {
   en: {
@@ -573,15 +580,39 @@ function SecondMind({ lang }: { lang: Language }) {
   );
 }
 
-function SettingsView({ lang }: { lang: Language }) {
+function SettingsToggle({ checked, onChange, label }: { checked: boolean; onChange: (checked: boolean) => void; label: string }) {
+  return <label className="toggle"><input aria-label={label} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span /></label>;
+}
+
+function SettingsView({ lang, theme, onThemeChange, onLanguageChange }: { lang: Language; theme: "light" | "dark"; onThemeChange: (theme: "light" | "dark") => void; onLanguageChange: (language: Language) => void }) {
   const isAr = lang === "ar";
-  const groups = isAr ? ["عام", "المظهر", "الذكاء الاصطناعي", "النماذج", "الوكلاء", "البرمجة", "العروض", "العقل الثاني", "لوحة المفاتيح", "الأمان والخصوصية"] : ["General", "Appearance", "AI", "Models", "Agents", "Programming", "Presentations", "Second Mind", "Keyboard", "Security & privacy"];
-  return (
-    <div className="settings-view workspace-view">
-      <aside className="settings-sidebar glass-panel"><SectionLabel>{isAr ? "إعدادات التطبيق" : "Application settings"}</SectionLabel>{groups.map((group, index) => <button className={index === 1 ? "settings-active" : ""} key={group}>{index === 1 ? <SlidersHorizontal size={15} /> : <CircleHelp size={15} />}{group}</button>)}</aside>
-      <section className="settings-main glass-panel"><div className="settings-title"><div><span className="eyebrow"><Signal tone="blue" /> {isAr ? "التخصيص" : "Customization"}</span><h2>{isAr ? "المظهر" : "Appearance"}</h2><p>{isAr ? "اضبط بيئة العمل لتناسب أسلوب تركيزك." : "Tune the workspace to suit how you focus."}</p></div><button className="reset-button">{isAr ? "استعادة الافتراضي" : "Reset default"}</button></div><div className="settings-stack"><div className="setting-row"><div><strong>{isAr ? "سمة التطبيق" : "Application theme"}</strong><span>{isAr ? "الواجهة الداكنة الهادئة هي السمة النشطة." : "Quiet dark is active across your workspaces."}</span></div><div className="theme-options"><button className="theme-option"><i /> {isAr ? "فاتح" : "Light"}</button><button className="theme-option selected"><i /> {isAr ? "داكن" : "Dark"}</button><button className="theme-option"><i /> {isAr ? "النظام" : "System"}</button></div></div><div className="setting-row"><div><strong>{isAr ? "لون المدار" : "Orbit accent"}</strong><span>{isAr ? "يستخدم للسياق النشط ومؤشرات الذكاء." : "Used for active context and AI signals."}</span></div><div className="accent-picker"><button className="accent-picked" /><button className="accent-cyan" /><button className="accent-violet" /><button className="accent-coral" /></div></div><div className="setting-row"><div><strong>{isAr ? "كثافة الواجهة" : "Interface density"}</strong><span>{isAr ? "اتساع متوازن لمراجعة العمل المعقد." : "Balanced breathing room for complex work."}</span></div><div className="segmented"><button>{isAr ? "مكثف" : "Compact"}</button><button className="selected">{isAr ? "مريح" : "Comfortable"}</button></div></div><div className="setting-row"><div><strong>{isAr ? "حركة الواجهة" : "Interface motion"}</strong><span>{isAr ? "انتقالات هادئة وسريعة بين الألواح." : "Quiet, quick transitions between panels."}</span></div><label className="toggle"><input type="checkbox" defaultChecked /><span /></label></div></div></section>
-    </div>
-  );
+  const [active, setActive] = useState<SettingsSection>("general");
+  const [motion, setMotion] = useState(true);
+  const [agentMemory, setAgentMemory] = useState(true);
+  const [agentApproval, setAgentApproval] = useState(true);
+  const [desktopAlerts, setDesktopAlerts] = useState(true);
+  const [digest, setDigest] = useState(true);
+  const [twoFactor, setTwoFactor] = useState(true);
+  const [workspaceSharing, setWorkspaceSharing] = useState(false);
+  const [integrations, setIntegrations] = useState<Record<string, boolean>>({ github: true, drive: false, slack: false });
+  const sections: Array<{ id: SettingsSection; label: string; icon: typeof Settings2 }> = isAr
+    ? [{ id: "general", label: "عام", icon: UserRound }, { id: "appearance", label: "المظهر", icon: SlidersHorizontal }, { id: "workspace", label: "مساحة العمل", icon: LayoutDashboard }, { id: "agents", label: "الوكلاء والذكاء", icon: Bot }, { id: "notifications", label: "الإشعارات", icon: Bell }, { id: "integrations", label: "التكاملات", icon: PlugZap }, { id: "security", label: "الأمان والخصوصية", icon: ShieldCheck }]
+    : [{ id: "general", label: "General", icon: UserRound }, { id: "appearance", label: "Appearance", icon: SlidersHorizontal }, { id: "workspace", label: "Workspace", icon: LayoutDashboard }, { id: "agents", label: "Agents & AI", icon: Bot }, { id: "notifications", label: "Notifications", icon: Bell }, { id: "integrations", label: "Integrations", icon: PlugZap }, { id: "security", label: "Security & privacy", icon: ShieldCheck }];
+  const sectionMeta = sections.find((section) => section.id === active)!;
+  const details: Record<SettingsSection, { eyebrow: string; title: string; subtitle: string }> = isAr
+    ? { general: { eyebrow: "ملفك الشخصي", title: "الإعدادات العامة", subtitle: "هوية حسابك ولغة التطبيق وطريقة بداية العمل." }, appearance: { eyebrow: "التخصيص", title: "المظهر", subtitle: "اضبط بيئة العمل لتناسب أسلوب تركيزك." }, workspace: { eyebrow: "بيئة العمل", title: "مساحة العمل", subtitle: "نظّم مشروعك الافتراضي وتفضيلات التعاون." }, agents: { eyebrow: "ذكاء أسامة", title: "الوكلاء والذكاء", subtitle: "تحكم في ذاكرة الوكيل وحدود التنفيذ والمراجعة." }, notifications: { eyebrow: "الانتباه", title: "الإشعارات", subtitle: "اختر اللحظات التي تستحق أن تقاطع تركيزك." }, integrations: { eyebrow: "التدفق المتصل", title: "التكاملات", subtitle: "اربط أدواتك كي يعمل الوكيل في السياق الصحيح." }, security: { eyebrow: "الثقة", title: "الأمان والخصوصية", subtitle: "أدِر الوصول، المفاتيح، والجلسات النشطة." } }
+    : { general: { eyebrow: "Your profile", title: "General settings", subtitle: "Your account identity, language, and starting context." }, appearance: { eyebrow: "Customization", title: "Appearance", subtitle: "Tune the workspace to suit how you focus." }, workspace: { eyebrow: "Work environment", title: "Workspace", subtitle: "Organize the default project and collaboration preferences." }, agents: { eyebrow: "Osamah AI", title: "Agents & AI", subtitle: "Control agent memory, execution boundaries, and review." }, notifications: { eyebrow: "Attention", title: "Notifications", subtitle: "Choose the moments that deserve to interrupt your focus." }, integrations: { eyebrow: "Connected flow", title: "Integrations", subtitle: "Connect your tools so the agent can work in the right context." }, security: { eyebrow: "Trust", title: "Security & privacy", subtitle: "Manage access, keys, and active sessions." } };
+  const settingRow = (title: string, detail: string, control: React.ReactNode) => <div className="setting-row"><div><strong>{title}</strong><span>{detail}</span></div>{control}</div>;
+  const panel = () => {
+    if (active === "general") return <div className="settings-stack"><div className="profile-summary"><span>OS</span><div><strong>Osamah Al-Harbi</strong><small>{isAr ? "مالك مساحة عمل Osamah IDE" : "Owner of the Osamah IDE workspace"}</small></div><button className="secondary-settings-button">{isAr ? "تغيير الصورة" : "Change photo"}</button></div><div className="settings-form-grid"><label>{isAr ? "الاسم الظاهر" : "Display name"}<input defaultValue="Osamah Al-Harbi" /></label><label>{isAr ? "البريد الإلكتروني" : "Email address"}<input defaultValue="osamah@example.com" /></label></div>{settingRow(isAr ? "لغة التطبيق" : "Application language", isAr ? "تتغير لغة الواجهة والاتجاه فوراً." : "The interface language and direction update immediately.", <div className="segmented"><button onClick={() => onLanguageChange("en")} className={lang === "en" ? "selected" : ""}>English</button><button onClick={() => onLanguageChange("ar")} className={lang === "ar" ? "selected" : ""}>العربية</button></div>)}{settingRow(isAr ? "المساحة عند البدء" : "Start in workspace", isAr ? "افتح لوحة التحكم في بداية كل جلسة." : "Open the command dashboard at the start of each session.", <div className="setting-value"><LayoutDashboard size={14} /> {isAr ? "لوحة التحكم" : "Dashboard"}</div>)}</div>;
+    if (active === "appearance") return <div className="settings-stack">{settingRow(isAr ? "سمة التطبيق" : "Application theme", theme === "dark" ? (isAr ? "الواجهة الداكنة الهادئة نشطة عبر مساحات عملك." : "Quiet dark is active across your workspaces.") : (isAr ? "واجهة فاتحة وواضحة نشطة الآن." : "A clear light workspace is active."), <div className="theme-options"><button onClick={() => onThemeChange("light")} className={`theme-option ${theme === "light" ? "selected" : ""}`}><Sun size={12} /> {isAr ? "فاتح" : "Light"}</button><button onClick={() => onThemeChange("dark")} className={`theme-option ${theme === "dark" ? "selected" : ""}`}><Moon size={12} /> {isAr ? "داكن" : "Dark"}</button></div>)}{settingRow(isAr ? "لون المدار" : "Orbit accent", isAr ? "يستخدم للسياق النشط ومؤشرات الذكاء." : "Used for active context and AI signals.", <div className="accent-picker"><button className="accent-picked" /><button className="accent-cyan" /><button className="accent-violet" /><button className="accent-coral" /></div>)}{settingRow(isAr ? "كثافة الواجهة" : "Interface density", isAr ? "اتساع متوازن لمراجعة العمل المعقد." : "Balanced breathing room for complex work.", <div className="segmented"><button>{isAr ? "مكثف" : "Compact"}</button><button className="selected">{isAr ? "مريح" : "Comfortable"}</button></div>)}{settingRow(isAr ? "حركة الواجهة" : "Interface motion", isAr ? "انتقالات هادئة وسريعة بين الألواح." : "Quiet, quick transitions between panels.", <SettingsToggle checked={motion} onChange={setMotion} label={isAr ? "حركة الواجهة" : "Interface motion"} />)}</div>;
+    if (active === "workspace") return <div className="settings-stack"><div className="settings-form-grid"><label>{isAr ? "اسم مساحة العمل" : "Workspace name"}<input defaultValue="Osamah IDE" /></label><label>{isAr ? "الفرع الافتراضي" : "Default branch"}<input defaultValue="main" /></label></div>{settingRow(isAr ? "مشاركة مساحة العمل" : "Workspace sharing", isAr ? "اسمح بدعوة متعاونين ومشاركة سياق المشروع." : "Allow collaborators to be invited and share project context.", <SettingsToggle checked={workspaceSharing} onChange={setWorkspaceSharing} label={isAr ? "مشاركة مساحة العمل" : "Workspace sharing"} />)}{settingRow(isAr ? "السياق النشط" : "Active context", isAr ? "8 ملفات وبحث التصدير متصلان حالياً." : "8 files and export research are currently connected.", <div className="setting-value"><Signal tone="green" /> {isAr ? "متصل" : "Connected"}</div>)}<div className="settings-note"><Sparkles size={15} /><p>{isAr ? "يبقى السياق المشترك متاحاً للوكلاء في البرمجة والعروض والعقل الثاني." : "Shared context remains available to agents in Programming, Presentations, and Second Mind."}</p></div></div>;
+    if (active === "agents") return <div className="settings-stack"><div className="agent-config-card"><div><span className="eyebrow"><Signal tone="blue" /> {isAr ? "الوكيل الافتراضي" : "Default agent"}</span><strong>OSAMAH AI</strong><p>{isAr ? "مساعد سياقي لتخطيط وتحويل العمل بين مساحاتك." : "A contextual assistant that moves work across your spaces."}</p></div><span className="agent-config-orbit"><Bot size={24} /></span></div>{settingRow(isAr ? "ذاكرة مساحة العمل" : "Workspace memory", isAr ? "اسمح للوكيل باستخدام السجل والسياق المتصل." : "Let the agent use workspace history and connected context.", <SettingsToggle checked={agentMemory} onChange={setAgentMemory} label={isAr ? "ذاكرة مساحة العمل" : "Workspace memory"} />)}{settingRow(isAr ? "موافقة قبل التعديل" : "Review before changes", isAr ? "اطلب موافقة قبل تعديل الملفات أو المهام." : "Request approval before modifying files or tasks.", <SettingsToggle checked={agentApproval} onChange={setAgentApproval} label={isAr ? "الموافقة قبل التعديل" : "Review before changes"} />)}{settingRow(isAr ? "النموذج النشط" : "Active model", isAr ? "نموذج متوازن للتخطيط والتنفيذ." : "Balanced model for planning and execution.", <button className="secondary-settings-button">{isAr ? "متوازن" : "Balanced"} <ChevronDown size={13} /></button>)}</div>;
+    if (active === "notifications") return <div className="settings-stack"><div className="notification-preview"><Bell size={17} /><div><strong>{isAr ? "مراجعة بانتظارك" : "Review waiting"}</strong><small>{isAr ? "يريد الوكيل تعديل 7 ملفات" : "The agent wants to modify 7 files"}</small></div><span>{isAr ? "الآن" : "Now"}</span></div>{settingRow(isAr ? "إشعارات سطح المكتب" : "Desktop notifications", isAr ? "تنبيه للموافقات والمهام المكتملة." : "Alert for approvals and completed tasks.", <SettingsToggle checked={desktopAlerts} onChange={setDesktopAlerts} label={isAr ? "إشعارات سطح المكتب" : "Desktop notifications"} />)}{settingRow(isAr ? "ملخص يومي" : "Daily digest", isAr ? "موجز هادئ لنشاط المساحات مرة يومياً." : "A quiet workspace activity summary once a day.", <SettingsToggle checked={digest} onChange={setDigest} label={isAr ? "ملخص يومي" : "Daily digest"} />)}{settingRow(isAr ? "قناة الملخص" : "Digest channel", isAr ? "يُرسل إلى مركز الإشعارات داخل التطبيق." : "Delivered to the in-app notification center.", <div className="setting-value"><Bell size={14} /> {isAr ? "داخل التطبيق" : "In app"}</div>)}</div>;
+    if (active === "integrations") return <div className="integration-grid">{[{ key: "github", name: "GitHub", detail: isAr ? "المشاريع والفروع وطلبات الدمج" : "Projects, branches, and pull requests", icon: Braces }, { key: "drive", name: "Google Drive", detail: isAr ? "المستندات والبحث المتصل" : "Documents and connected research", icon: Folder }, { key: "slack", name: "Slack", detail: isAr ? "التحديثات والموافقة من الفريق" : "Team updates and approvals", icon: Command }].map((integration) => { const Icon = integration.icon; const connected = integrations[integration.key]; return <article className="integration-card" key={integration.key}><span className="integration-icon"><Icon size={18} /></span><div><strong>{integration.name}</strong><p>{integration.detail}</p></div><button onClick={() => setIntegrations((current) => ({ ...current, [integration.key]: !current[integration.key] }))} className={connected ? "integration-connected" : "secondary-settings-button"}>{connected ? (isAr ? "متصل" : "Connected") : (isAr ? "ربط" : "Connect")}</button></article>; })}</div>;
+    return <div className="settings-stack"><div className="security-score"><span><ShieldCheck size={20} /></span><div><strong>{isAr ? "أمان مساحة العمل قوي" : "Workspace security is strong"}</strong><p>{isAr ? "لا توجد توصيات عاجلة تحتاج إلى إجراء." : "No urgent recommendations need action."}</p></div><b>92</b></div>{settingRow(isAr ? "المصادقة الثنائية" : "Two-factor authentication", isAr ? "طبقة تحقق إضافية عند تسجيل الدخول." : "An additional verification step at sign-in.", <SettingsToggle checked={twoFactor} onChange={setTwoFactor} label={isAr ? "المصادقة الثنائية" : "Two-factor authentication"} />)}{settingRow(isAr ? "الجلسات النشطة" : "Active sessions", isAr ? "جلسة واحدة نشطة على هذا الجهاز." : "One session is active on this device.", <button className="secondary-settings-button">{isAr ? "إدارة" : "Manage"}</button>)}{settingRow(isAr ? "مفاتيح API" : "API keys", isAr ? "لا مفاتيح مخصصة محفوظة في مساحة العمل." : "No custom keys are stored in this workspace.", <button className="secondary-settings-button">{isAr ? "عرض المفاتيح" : "View keys"}</button>)}</div>;
+  };
+  return <div className="settings-view workspace-view"><aside className="settings-sidebar glass-panel"><SectionLabel>{isAr ? "إعدادات التطبيق" : "Application settings"}</SectionLabel>{sections.map((section) => { const Icon = section.icon; return <button onClick={() => setActive(section.id)} className={active === section.id ? "settings-active" : ""} key={section.id}><Icon size={15} />{section.label}</button>; })}</aside><section className="settings-main glass-panel"><div className="settings-title"><div><span className="eyebrow"><Signal tone="blue" /> {details[active].eyebrow}</span><h2>{details[active].title}</h2><p>{details[active].subtitle}</p></div><button onClick={() => { setActive("general"); onThemeChange("dark"); }} className="reset-button">{isAr ? "استعادة الافتراضي" : "Reset default"}</button></div><div className="settings-section-indicator"><sectionMeta.icon size={13} /><span>{sectionMeta.label}</span></div>{panel()}</section></div>;
 }
 
 function CommandPalette({ lang, onClose, onNavigate }: { lang: Language; onClose: () => void; onNavigate: (workspace: Workspace) => void }) {
@@ -598,6 +629,7 @@ export default function OsamahWorkspace() {
   const [isAICollapsed, setAIcollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const { theme, toggleTheme, setTheme } = useTheme();
   const t = content[language];
   const isAr = language === "ar";
   const meta = workspaceMeta[workspace];
@@ -640,7 +672,7 @@ export default function OsamahWorkspace() {
     programming: <Programming lang={language} />,
     presentations: <Presentations lang={language} />,
     mind: <SecondMind lang={language} />,
-    settings: <SettingsView lang={language} />,
+    settings: <SettingsView lang={language} theme={theme} onThemeChange={(nextTheme) => setTheme?.(nextTheme)} onLanguageChange={setLanguage} />,
   }[workspace];
 
   return (
@@ -653,6 +685,7 @@ export default function OsamahWorkspace() {
         <button className="command-trigger" onClick={() => setCommandOpen(true)}><Search size={16} /><span>{t.search}</span><kbd>{isAr ? "Ctrl" : "⌘"} K</kbd></button>
         <div className="topbar-actions">
           <button className="language-toggle" onClick={() => setLanguage(isAr ? "en" : "ar")}><Globe2 size={15} /><span>{t.language}</span></button>
+          <button className="theme-toggle" onClick={toggleTheme} aria-label={theme === "dark" ? (isAr ? "تفعيل العرض الفاتح" : "Enable light mode") : (isAr ? "تفعيل العرض الداكن" : "Enable dark mode")}>{theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}<span>{theme === "dark" ? (isAr ? "فاتح" : "Light") : (isAr ? "داكن" : "Dark")}</span></button>
           <div className="notification-wrap"><button className={`top-icon-button ${notificationsOpen ? "top-icon-active" : ""}`} onClick={() => setNotificationsOpen((visible) => !visible)} aria-label={t.notifications}><Bell size={17} /><i>3</i></button>{notificationsOpen && <div className="notifications-popover glass-panel"><SectionLabel>{t.notifications}</SectionLabel><TaskRow title={isAr ? "اكتمل مخطط العرض" : "Presentation outline completed"} detail={isAr ? "الآن" : "Just now"} state="done" /><TaskRow title={isAr ? "موافقة مطلوبة" : "Approval required"} detail={isAr ? "يريد الوكيل تعديل 7 ملفات" : "Agent wants to modify 7 files"} state="active" /><button className="view-notifications">{isAr ? "عرض مركز المهام" : "Open task center"}</button></div>}</div>
           <button className="profile-button"><span>OS</span><ChevronDown size={14} /></button>
         </div>
