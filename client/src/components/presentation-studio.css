@@ -1,0 +1,34 @@
+.presentation-studio { display: flex; flex-direction: column; gap: 12px; }
+.presenton-status { display: flex; align-items: center; justify-content: space-between; gap: 14px; min-height: 44px; padding: 9px 14px; border: 1px solid color-mix(in srgb, var(--line) 88%, transparent); border-radius: 14px; background: color-mix(in srgb, var(--panel-strong) 82%, transparent); font-size: 12px; color: var(--muted); }
+.presenton-status strong { color: var(--text); font-weight: 600; }
+.presenton-status button, .presentation-nav-title button { display: inline-flex; align-items: center; gap: 6px; padding: 6px 9px; border: 1px solid var(--line); border-radius: 9px; background: transparent; color: var(--muted); font: inherit; cursor: pointer; }
+.presenton-status button:hover, .presentation-nav-title button:hover { border-color: var(--orbit); color: var(--orbit); }
+.presenton-running { border-color: color-mix(in srgb, #62d7b0 40%, var(--line)); }
+.presenton-runtime-not-configured { border-color: color-mix(in srgb, #e7b867 35%, var(--line)); }
+.presenton-error { border-color: color-mix(in srgb, #f08080 50%, var(--line)); color: #c76464; }
+.presenton-status > span { display: inline-flex; align-items: center; gap: 7px; }
+.presentation-grid { min-height: 590px; }
+.presentation-nav-title { display: flex; align-items: center; justify-content: space-between; padding: 0 0 10px; color: var(--text); font-size: 13px; }
+.presentation-slides-heading { padding: 16px 0 10px; margin-top: 12px; border-top: 1px solid var(--line); }
+.presentation-decks-list, .slides-list { display: grid; gap: 6px; max-height: 175px; overflow: auto; }
+.presentation-deck-row { display: flex; align-items: center; justify-content: space-between; gap: 7px; width: 100%; min-height: 37px; padding: 8px 9px; border: 1px solid transparent; border-radius: 10px; background: transparent; color: var(--muted); text-align: start; cursor: pointer; }
+.presentation-deck-row:hover, .presentation-deck-row.deck-selected { background: color-mix(in srgb, var(--orbit) 12%, transparent); border-color: color-mix(in srgb, var(--orbit) 32%, transparent); color: var(--text); }
+.presentation-deck-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.presentation-deck-row small { font-size: 10px; color: var(--muted); }
+.presentation-empty, .presentation-empty-workbench { display: grid; justify-items: center; gap: 10px; padding: 28px 15px; color: var(--muted); text-align: center; }
+.presentation-load-error { display: grid; justify-items: start; gap: 9px; padding: 14px 10px; border: 1px solid color-mix(in srgb, #f08080 45%, var(--line)); border-radius: 11px; color: #c76464; font-size: 12px; }
+.presentation-load-error button { padding: 6px 9px; border: 1px solid currentColor; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.presentation-empty button, .presentation-empty-workbench button { padding: 8px 11px; border: 1px solid color-mix(in srgb, var(--orbit) 50%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--orbit) 10%, transparent); color: var(--orbit); cursor: pointer; }
+.presentation-empty-workbench { height: 100%; align-content: center; border: 1px dashed var(--line); border-radius: 18px; background: color-mix(in srgb, var(--panel-strong) 70%, transparent); }
+.presentation-editor-fields { display: grid; gap: 12px; margin: 14px auto 0; max-width: 860px; }
+.presentation-editor-fields label { display: grid; gap: 7px; color: var(--muted); font-size: 12px; }
+.presentation-editor-fields input, .presentation-editor-fields textarea, .speaker-notes textarea { width: 100%; border: 1px solid var(--line); border-radius: 11px; background: color-mix(in srgb, var(--panel-strong) 82%, transparent); color: var(--text); padding: 10px 12px; font: inherit; outline: none; }
+.presentation-editor-fields input:focus, .presentation-editor-fields textarea:focus, .speaker-notes textarea:focus { border-color: var(--orbit); box-shadow: 0 0 0 3px color-mix(in srgb, var(--orbit) 15%, transparent); }
+.presentation-editor-fields textarea { min-height: 210px; resize: vertical; line-height: 1.7; }
+.speaker-notes { display: grid; gap: 8px; margin-top: 14px; }
+.speaker-notes textarea { min-height: 92px; resize: vertical; }
+.workspace-operation-error { display: inline-flex; align-items: center; gap: 7px; }
+.spin { animation: presentation-spin 900ms linear infinite; }
+@keyframes presentation-spin { to { transform: rotate(360deg); } }
+@media (max-width: 780px) { .presentation-grid { min-height: 0; }.slide-navigator { max-height: none; }.presentation-decks-list, .slides-list { max-height: 160px; }.presenton-status { align-items: flex-start; }.presenton-status button { flex: 0 0 auto; } }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

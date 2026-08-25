@@ -4,56 +4,23 @@
  */
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, LockKeyhole, Moon, Orbit, RefreshCcw, ShieldCheck, Sparkles, Sun, UserRound } from "lucide-react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
+import { trpc } from "@/lib/trpc";
 import "./auth-motion.css";
 
 type Language = "ar" | "en";
 type AuthMode = "login" | "register" | "recover-email" | "recover-answer" | "recover-reset";
 
-type LocalAccount = {
-  name: string;
-  email: string;
-  passwordHash: string;
-  recoveryQuestion: string;
-  recoveryAnswerHash: string;
-  createdAt: string;
-};
-
-const ACCOUNT_KEY = "osamah.ide.local.account.v1";
-const SESSION_KEY = "osamah.ide.local.session.v1";
 const ORBIT_MARK = "/manus-storage/osamah-orbit-mark_bc7fec06.png";
-
-function readAccount(): LocalAccount | null {
-  try {
-    const value = localStorage.getItem(ACCOUNT_KEY);
-    return value ? (JSON.parse(value) as LocalAccount) : null;
-  } catch {
-    return null;
-  }
-}
-
-async function hashValue(value: string) {
-  if (window.crypto?.subtle) {
-    const bytes = new TextEncoder().encode(value.trim().toLowerCase());
-    const digest = await window.crypto.subtle.digest("SHA-256", bytes);
-    return Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, "0")).join("");
-  }
-  return btoa(unescape(encodeURIComponent(value.trim().toLowerCase())));
-}
-
-export function hasLocalSession() {
-  return Boolean(readAccount() && localStorage.getItem(SESSION_KEY) === "active");
-}
 
 export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => void }) {
   const { theme, toggleTheme } = useTheme();
-  const account = useMemo(() => readAccount(), []);
   const [language, setLanguage] = useState<Language>("ar");
-  const [mode, setMode] = useState<AuthMode>(account ? "login" : "register");
+  const [mode, setMode] = useState<AuthMode>("register");
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
-  const [email, setEmail] = useState(account?.email ?? "");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [question, setQuestion] = useState("first-project");
@@ -61,6 +28,14 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
   const [feedback, setFeedback] = useState<{ type: "error" | "success"; text: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeField, setActiveField] = useState<string | null>(null);
+  const [recoveryPrompt, setRecoveryPrompt] = useState("");
+  const localRegister = trpc.auth.local.register.useMutation();
+  const localLogin = trpc.auth.local.login.useMutation();
+  const localRecoveryQuestion = trpc.auth.local.recoveryQuestion.useQuery(
+    { email: email.trim().toLowerCase() },
+    { enabled: false, retry: false },
+  );
+  const localResetPassword = trpc.auth.local.resetPassword.useMutation();
 
   const isAr = language === "ar";
   const directionArrow = isAr ? ArrowLeft : ArrowRight;
@@ -70,10 +45,10 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
     : [{ id: "first-project", label: "What was the name of your first project?" }, { id: "favorite-tool", label: "What is your favorite technical tool?" }, { id: "focus-city", label: "Which city do you like to work from?" }];
   const content = isAr
     ? {
-      brandLine: "نواة ذكاء واحدة · محطة عمل محلية", trust: "محلي على هذا الجهاز", enter: "افتح مساحة السياق", welcome: "استأنف سياق العمل", welcomeDetail: "ثبّت هويتك أولاً، ثم افتح الكود والعروض والمعرفة من نفس المساحة.", create: "ثبّت هوية العمل", createDetail: "أكمل الهوية والحماية قبل فتح مساحة السياق على هذا الجهاز.", recover: "استعد مسار الوصول", recoverDetail: "تحقق من سؤال الأمان المحلي ثم حدّث الحماية قبل العودة إلى مساحة العمل.", reset: "ثبّت حماية جديدة", resetDetail: "تم التحقق من الهوية. حدّث كلمة المرور، ثم استأنف سياق العمل.", name: "الاسم الظاهر", email: "البريد الإلكتروني", password: "كلمة المرور", confirm: "تأكيد كلمة المرور", question: "سؤال الاسترداد", answer: "إجابتك الخاصة", signIn: "فتح مساحة العمل", signUp: "تثبيت الهوية محلياً", forgot: "استعادة الوصول", haveAccount: "لديك هوية محلية بالفعل؟", noAccount: "لا توجد هوية على هذا الجهاز بعد؟", useLogin: "فتح مساحة العمل", useRegister: "إنشاء هوية", back: "العودة لمسار الدخول", continue: "متابعة التحقق", verify: "تحقق من الإجابة", update: "تحديث الحماية", localLine: "لا تُرسل بيانات الحساب إلى خادم. تبقى الهوية والحماية على هذا الجهاز فقط.", privacy: "بيانات الهوية محلية", encrypted: "تحقق مشفّر محلياً", recovery: "استرداد محكوم", signal: "المسار محمي", passwordHint: "8 أحرف على الأقل", mismatch: "كلمتا المرور غير متطابقتين.", wrongLogin: "تحقق من البريد الإلكتروني أو كلمة المرور.", wrongAnswer: "إجابة الاسترداد غير مطابقة. حاول مرة أخرى.", emailMismatch: "هذا البريد لا يطابق الحساب المحلي على هذا الجهاز.", answerHint: "استخدم إجابة تتذكرها ولا يسهل تخمينها.", success: "تم تثبيت هويتك المحلية. جارٍ فتح مساحة العمل…", changed: "تم تحديث الحماية محلياً. جارٍ فتح مساحة العمل…", noSpace: "لا توجد هوية محلية بعد. أنشئ الهوية أولاً.", processing: "جارٍ التحقق…", theme: theme === "dark" ? "فاتح" : "داكن", language: "English"
+      brandLine: "نواة ذكاء واحدة · محطة عمل محمية", trust: "جلسة خادمية محمية", enter: "افتح مساحة السياق", welcome: "استأنف سياق العمل", welcomeDetail: "ثبّت هويتك أولاً، ثم افتح الكود والعروض والمعرفة من نفس المساحة.", create: "ثبّت هوية العمل", createDetail: "أكمل الهوية والحماية قبل فتح مساحة السياق.", recover: "استعد مسار الوصول", recoverDetail: "تحقق من سؤال الأمان ثم حدّث الحماية قبل العودة إلى مساحة العمل.", reset: "ثبّت حماية جديدة", resetDetail: "تم التحقق من الهوية. حدّث كلمة المرور، ثم استأنف سياق العمل.", name: "الاسم الظاهر", email: "البريد الإلكتروني", password: "كلمة المرور", confirm: "تأكيد كلمة المرور", question: "سؤال الاسترداد", answer: "إجابتك الخاصة", signIn: "فتح مساحة العمل", signUp: "تثبيت الهوية", forgot: "استعادة الوصول", haveAccount: "لديك هوية بالفعل؟", noAccount: "لا توجد هوية بعد؟", useLogin: "فتح مساحة العمل", useRegister: "إنشاء هوية", back: "العودة لمسار الدخول", continue: "متابعة التحقق", verify: "تحقق من الإجابة", update: "تحديث الحماية", localLine: "لا تُحفظ كلمة المرور أو الجلسة في المتصفح؛ تحميها جلسة خادمية موقعة.", privacy: "هوية خادمية محمية", encrypted: "جلسة HttpOnly موقعة", recovery: "استرداد محكوم", signal: "المسار محمي", passwordHint: "8 أحرف على الأقل", mismatch: "كلمتا المرور غير متطابقتين.", wrongLogin: "تحقق من البريد الإلكتروني أو كلمة المرور.", wrongAnswer: "إجابة الاسترداد غير مطابقة. حاول مرة أخرى.", emailMismatch: "لا يمكن العثور على حساب بهذا البريد.", answerHint: "استخدم إجابة تتذكرها ولا يسهل تخمينها.", success: "تم تثبيت هويتك. جارٍ فتح مساحة العمل…", changed: "تم تحديث الحماية. جارٍ فتح مساحة العمل…", noSpace: "لا توجد هوية بهذا البريد. أنشئ الهوية أولاً.", processing: "جارٍ التحقق…", theme: theme === "dark" ? "فاتح" : "داكن", language: "English"
     }
     : {
-      brandLine: "ONE AI CORE · LOCAL WORKSTATION", trust: "Local to this device", enter: "Open your context workspace", welcome: "Resume your work context", welcomeDetail: "Verify your identity, then reopen code, presentations, and knowledge from one workspace.", create: "Establish your work identity", createDetail: "Complete identity and protection before opening this device’s context workspace.", recover: "Restore your access path", recoverDetail: "Verify the local recovery question, then update protection before returning to your workspace.", reset: "Set new protection", resetDetail: "Identity is verified. Update the password, then resume your work context.", name: "Display name", email: "Email address", password: "Password", confirm: "Confirm password", question: "Recovery question", answer: "Your private answer", signIn: "Open workspace", signUp: "Establish local identity", forgot: "Restore access", haveAccount: "Already have a local identity?", noAccount: "No identity on this device yet?", useLogin: "Open workspace", useRegister: "Create identity", back: "Back to access path", continue: "Continue verification", verify: "Verify answer", update: "Update protection", localLine: "Account data is not sent to a server. Identity and protection remain on this device only.", privacy: "Local identity data", encrypted: "Encrypted local verification", recovery: "Governed recovery", signal: "Path secured", passwordHint: "At least 8 characters", mismatch: "The passwords do not match.", wrongLogin: "Check your email address or password.", wrongAnswer: "The recovery answer does not match. Try again.", emailMismatch: "That email does not match the local account on this device.", answerHint: "Use an answer that is memorable but difficult to guess.", success: "Your local identity is established. Opening workspace…", changed: "Protection updated locally. Opening workspace…", noSpace: "No local identity exists yet. Establish it first.", processing: "Verifying…", theme: theme === "dark" ? "Light" : "Dark", language: "العربية"
+      brandLine: "ONE AI CORE · PROTECTED WORKSTATION", trust: "Protected server session", enter: "Open your context workspace", welcome: "Resume your work context", welcomeDetail: "Verify your identity, then reopen code, presentations, and knowledge from one workspace.", create: "Establish your work identity", createDetail: "Complete identity and protection before opening the context workspace.", recover: "Restore your access path", recoverDetail: "Verify the recovery question, then update protection before returning to your workspace.", reset: "Set new protection", resetDetail: "Identity is verified. Update the password, then resume your work context.", name: "Display name", email: "Email address", password: "Password", confirm: "Confirm password", question: "Recovery question", answer: "Your private answer", signIn: "Open workspace", signUp: "Establish identity", forgot: "Restore access", haveAccount: "Already have an identity?", noAccount: "No identity yet?", useLogin: "Open workspace", useRegister: "Create identity", back: "Back to access path", continue: "Continue verification", verify: "Verify answer", update: "Update protection", localLine: "The browser does not retain the password or session; a signed HttpOnly server session protects access.", privacy: "Protected server identity", encrypted: "Signed HttpOnly session", recovery: "Governed recovery", signal: "Path secured", passwordHint: "At least 8 characters", mismatch: "The passwords do not match.", wrongLogin: "Check your email address or password.", wrongAnswer: "The recovery answer does not match. Try again.", emailMismatch: "No account was found for this email.", answerHint: "Use an answer that is memorable but difficult to guess.", success: "Your identity is established. Opening workspace…", changed: "Protection updated. Opening workspace…", noSpace: "No identity exists for this email. Establish it first.", processing: "Verifying…", theme: theme === "dark" ? "Light" : "Dark", language: "العربية"
     };
 
   const title = mode === "login" ? content.welcome : mode === "register" ? content.create : mode === "recover-reset" ? content.reset : content.recover;
@@ -105,7 +80,6 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
 
   const clearFeedback = () => feedback && setFeedback(null);
   const completeAuthentication = (message: string) => {
-    localStorage.setItem(SESSION_KEY, "active");
     setFeedback({ type: "success", text: message });
     window.setTimeout(onAuthenticated, 700);
   };
@@ -118,31 +92,30 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
       if (mode === "register") {
         if (!name.trim() || !email.trim() || password.length < 8 || !answer.trim()) throw new Error(isAr ? "أكمل الحقول المطلوبة واستخدم كلمة مرور من 8 أحرف على الأقل." : "Complete the required fields and use a password of at least 8 characters.");
         if (password !== confirmPassword) throw new Error(content.mismatch);
-        const localAccount: LocalAccount = { name: name.trim(), email: email.trim().toLowerCase(), passwordHash: await hashValue(password), recoveryQuestion: question, recoveryAnswerHash: await hashValue(answer), createdAt: new Date().toISOString() };
-        localStorage.setItem(ACCOUNT_KEY, JSON.stringify(localAccount));
+        const selectedQuestion = questions.find((item) => item.id === question)?.label ?? question;
+        await localRegister.mutateAsync({ name: name.trim(), email: email.trim(), password, recoveryQuestion: selectedQuestion, recoveryAnswer: answer });
         completeAuthentication(content.success);
         return;
       }
-      const current = readAccount();
-      if (!current) throw new Error(content.noSpace);
       if (mode === "login") {
-        if (current.email !== email.trim().toLowerCase() || current.passwordHash !== await hashValue(password)) throw new Error(content.wrongLogin);
+        await localLogin.mutateAsync({ email: email.trim(), password });
         completeAuthentication(content.success);
         return;
       }
       if (mode === "recover-email") {
-        if (current.email !== email.trim().toLowerCase()) throw new Error(content.emailMismatch);
+        const result = await localRecoveryQuestion.refetch();
+        if (!result.data) throw new Error(content.emailMismatch);
+        setRecoveryPrompt(result.data.recoveryQuestion);
         setMode("recover-answer");
         return;
       }
       if (mode === "recover-answer") {
-        if (current.recoveryAnswerHash !== await hashValue(answer)) throw new Error(content.wrongAnswer);
         setMode("recover-reset");
         return;
       }
       if (password.length < 8) throw new Error(content.passwordHint);
       if (password !== confirmPassword) throw new Error(content.mismatch);
-      localStorage.setItem(ACCOUNT_KEY, JSON.stringify({ ...current, passwordHash: await hashValue(password) }));
+      await localResetPassword.mutateAsync({ email: email.trim(), recoveryAnswer: answer, newPassword: password });
       completeAuthentication(content.changed);
     } catch (error) {
       setFeedback({ type: "error", text: error instanceof Error ? error.message : content.wrongLogin });
@@ -161,7 +134,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
     </motion.div>
     <section className="auth-stage">
       <motion.aside className="auth-visual" initial={{ opacity: 0, x: isAr ? 30 : -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.65 }}>
-        <div className="auth-signal"><span className="auth-live-dot" />{content.signal}</div>
+        <div className="auth-signal"><span className="auth-live-dot" />{isAr ? "واجهة حساب محلية" : "Local account interface"}</div>
         <div className="auth-orbit-system" aria-hidden="true"><i className="orbit-ring ring-one" /><i className="orbit-ring ring-two" /><i className="orbit-ring ring-three" /><span className="orbit-satellite satellite-one" /><span className="orbit-satellite satellite-two" /><span className="orbit-core"><img src={ORBIT_MARK} alt="" /></span><b className="orbit-node node-a" /><b className="orbit-node node-b" /><b className="orbit-node node-c" /></div>
         <div className="auth-visual-copy"><span>{content.trust}</span><h1>{isAr ? "هيّئ مساحة العمل، ثم افتح السياق." : "Prepare the workspace. Then open context."}</h1><p>{isAr ? "مسار واحد للكود والعروض والمعرفة. ثبّت الهوية والحماية، ثم انتقل إلى مساحة العمل مع بقاء قرارك على هذا الجهاز." : "One path for code, presentations, and knowledge. Establish identity and protection, then enter the workspace while decisions remain on this device."}</p></div>
         <div className="auth-workstation-map" aria-label={isAr ? "مسارات مساحة العمل" : "Workspace tracks"}><span><b>01</b>{isAr ? "كود" : "Code"}</span><span><b>02</b>{isAr ? "معرفة" : "Knowledge"}</span><span><b>03</b>{isAr ? "وكيل" : "Agent"}</span></div>
@@ -169,12 +142,12 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
       </motion.aside>
       <motion.section className="auth-card" initial={{ opacity: 0, x: isAr ? -30 : 30, scale: 0.98 }} animate={{ opacity: 1, x: 0, scale: 1 }} transition={{ duration: 0.62, delay: 0.08 }}>
         <div className="auth-card-head"><div className="auth-step"><span>{mode === "register" ? "01" : mode.startsWith("recover") ? "02" : "00"}</span><i /></div><span className="auth-local-badge"><LockKeyhole size={11} /> {content.trust}</span></div>
-        <div className="auth-context-rail"><span><i /> {isAr ? "السياق: محلي ومحمٍ" : "CONTEXT: LOCAL + PROTECTED"}</span><span><i /> {isAr ? "المحطات: 03 جاهزة" : "NODES: 03 READY"}</span><span><i /> {isAr ? "المسار: مساحة العمل" : "ROUTE: WORKSPACE"}</span></div>
-        <div className={`auth-intelligence-track ${activeField ? "is-active" : ""}`} aria-hidden="true"><span className="auth-track-label">{isAr ? "إشارة التكيّف" : "ADAPTIVE SIGNAL"}</span><div><i /><i /><i /><b /></div><span>{activeField ? (isAr ? "يتابع الحقل النشط" : "TRACKING ACTIVE FIELD") : (isAr ? "يراقب الحقول النشطة" : "WATCHING ACTIVE FIELDS")}</span></div>
+        <div className="auth-context-rail"><span><i /> {isAr ? "الحساب: محلي ومحمي" : "ACCOUNT: LOCAL + PROTECTED"}</span><span><i /> {isAr ? "النموذج: ثلاث خطوات" : "FORM: THREE STEPS"}</span><span><i /> {isAr ? "الوجهة: مساحة العمل" : "DESTINATION: WORKSPACE"}</span></div>
+        <div className={`auth-intelligence-track ${activeField ? "is-active" : ""}`} aria-hidden="true"><span className="auth-track-label">{isAr ? "مؤشر الواجهة" : "INTERFACE INDICATOR"}</span><div><i /><i /><i /><b /></div><span>{activeField ? (isAr ? "الحقل النشط مميز بصرياً" : "ACTIVE FIELD HIGHLIGHTED") : (isAr ? "حركة واجهة محلية" : "LOCAL INTERFACE MOTION")}</span></div>
           <div className={`auth-provision-path phase-${provisionPhase}`} aria-label={isAr ? "مسار تهيئة مساحة العمل" : "Workspace provisioning path"}>
             <span className="provision-connector" aria-hidden="true" />
-          <div className={`provision-node provision-identity ${identityReady ? "is-complete" : ""}`}><i><UserRound size={11} /></i><b>{isAr ? "الهوية" : "Identity"}</b><small>{identityReady ? (isAr ? "مؤكدة" : "Verified") : (isAr ? "بانتظارك" : "Awaiting")}</small></div>
-          <div className={`provision-node provision-security ${securityReady ? "is-complete" : ""}`}><i><ShieldCheck size={11} /></i><b>{isAr ? "الحماية" : "Security"}</b><small>{securityReady ? (isAr ? "جاهزة" : "Ready") : (isAr ? "قيد التهيئة" : "Configuring")}</small></div>
+          <div className={`provision-node provision-identity ${identityReady ? "is-complete" : ""}`}><i><UserRound size={11} /></i><b>{isAr ? "الهوية" : "Identity"}</b><small>{identityReady ? (isAr ? "بيانات مكتملة" : "Details complete") : (isAr ? "بانتظارك" : "Awaiting")}</small></div>
+          <div className={`provision-node provision-security ${securityReady ? "is-complete" : ""}`}><i><ShieldCheck size={11} /></i><b>{isAr ? "الحماية" : "Security"}</b><small>{securityReady ? (isAr ? "خطوات مكتملة" : "Steps complete") : (isAr ? "أكمل الحقول" : "Complete fields")}</small></div>
           <div className={`provision-node provision-workspace ${provisionPhase === "workspace" ? "is-complete" : ""}`}><i><Orbit size={11} /></i><b>{isAr ? "المساحة" : "Workspace"}</b><small>{provisionPhase === "workspace" ? (isAr ? "افتح السياق" : "Open context") : (isAr ? "التالي" : "Next")}</small></div>
         </div>
         <AnimatePresence mode="wait">
@@ -185,7 +158,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
             {mode === "register" && <motion.label {...fieldMotion} className="auth-field"><span>{content.name}</span><div><UserRound size={15} /><input value={name} onFocus={() => setActiveField("identity")} onBlur={() => setActiveField(null)} onChange={(event) => { setName(event.target.value); clearFeedback(); }} autoComplete="name" required /></div></motion.label>}
             {(mode === "login" || mode === "register" || mode === "recover-email") && <motion.label {...fieldMotion} className="auth-field"><span>{content.email}</span><div><Orbit size={15} /><input type="email" value={email} onFocus={() => setActiveField("email")} onBlur={() => setActiveField(null)} onChange={(event) => { setEmail(event.target.value); clearFeedback(); }} autoComplete="email" required /></div></motion.label>}
             {mode === "register" && <motion.label {...fieldMotion} className="auth-field"><span>{content.question}</span><div><ShieldCheck size={15} /><select value={question} onFocus={() => setActiveField("recovery")} onBlur={() => setActiveField(null)} onChange={(event) => setQuestion(event.target.value)}>{questions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div></motion.label>}
-            {(mode === "register" || mode === "recover-answer") && <motion.label {...fieldMotion} className="auth-field"><span>{mode === "recover-answer" ? questions.find((item) => item.id === readAccount()?.recoveryQuestion)?.label ?? content.question : content.answer}</span><div><KeyRound size={15} /><input value={answer} onFocus={() => setActiveField("answer")} onBlur={() => setActiveField(null)} onChange={(event) => { setAnswer(event.target.value); clearFeedback(); }} autoComplete="off" required /></div><small>{content.answerHint}</small></motion.label>}
+            {(mode === "register" || mode === "recover-answer") && <motion.label {...fieldMotion} className="auth-field"><span>{mode === "recover-answer" ? recoveryPrompt || content.question : content.answer}</span><div><KeyRound size={15} /><input value={answer} onFocus={() => setActiveField("answer")} onBlur={() => setActiveField(null)} onChange={(event) => { setAnswer(event.target.value); clearFeedback(); }} autoComplete="off" required /></div><small>{content.answerHint}</small></motion.label>}
             {(mode === "login" || mode === "register" || mode === "recover-reset") && <motion.label {...fieldMotion} className="auth-field"><span>{content.password}</span><div><LockKeyhole size={15} /><input type={showPassword ? "text" : "password"} value={password} onFocus={() => setActiveField("password")} onBlur={() => setActiveField(null)} onChange={(event) => { setPassword(event.target.value); clearFeedback(); }} autoComplete={mode === "login" ? "current-password" : "new-password"} required /><button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button></div><small>{mode === "login" ? "" : content.passwordHint}</small></motion.label>}
             {(mode === "register" || mode === "recover-reset") && <motion.label {...fieldMotion} className="auth-field"><span>{content.confirm}</span><div><CheckCircle2 size={15} /><input type={showPassword ? "text" : "password"} value={confirmPassword} onFocus={() => setActiveField("confirmation")} onBlur={() => setActiveField(null)} onChange={(event) => { setConfirmPassword(event.target.value); clearFeedback(); }} autoComplete="new-password" required /></div></motion.label>}
           </AnimatePresence>

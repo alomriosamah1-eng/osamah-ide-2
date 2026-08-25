@@ -1,0 +1,21 @@
+{
+  "component": "Presenton",
+  "vendorPath": "third_party/presenton",
+  "upstreamRepository": "https://github.com/presenton/presenton.git",
+  "upstreamCommit": "92033c14732d9710d61609662709339d97d44c63",
+  "upstreamApplicationVersion": "0.9.7-beta",
+  "license": "Apache-2.0",
+  "snapshotPolicy": {
+    "sourceIsUnmodified": true,
+    "excludedDirectories": [".git", "node_modules", ".venv", "venv", "__pycache__", "servers/fastapi/fastembed_cache"],
+    "excludedGeneratedArtifacts": ["FastEmbed model cache"],
+    "adaptersLiveOutsideVendorDirectory": true
+  },
+  "integrationPolicy": {
+    "runtimeRole": "presentation creation, editing, generation, and export engine",
+    "providerSecrets": "server or runtime only; never browser storage",
+    "localModels": "not included or enabled",
+    "fallbackGeneration": "forbidden"
+  },
+  "capturedAt": "2026-08-25"
+}

@@ -1,5 +1,7 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../../drizzle/schema";
+import { getUserById } from "../db";
+import { getLocalSessionUserId } from "../localAuth";
 import { sdk } from "./sdk";
 
 export type TrpcContext = {
@@ -16,8 +18,12 @@ export async function createContext(
   try {
     user = await sdk.authenticateRequest(opts.req);
   } catch (error) {
-    // Authentication is optional for public procedures.
     user = null;
+  }
+
+  if (!user) {
+    const localUserId = await getLocalSessionUserId(opts.req);
+    if (localUserId) user = await getUserById(localUserId) ?? null;
   }
 
   return {

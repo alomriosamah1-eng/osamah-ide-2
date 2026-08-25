@@ -1,0 +1,101 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "second-brain"
+version = "0.0.1"
+description = "Personal knowledge base that auto-ingests files and exposes them to AI assistants over MCP"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "Ben Jordan" }]
+dependencies = [
+    "watchdog>=4.0",
+    "markitdown[all]>=0.0.1a3",
+    "sqlite-vec>=0.1.6",
+    "mcp>=1.0",
+    "typer>=0.12",
+    "voyageai>=0.3",
+    "platformdirs>=4.0",
+    "rich>=13.0",
+    "tenacity>=9.0",
+    # Round 15 (audit-found gap J1) — both were imported at module
+    # level by chat.py / briefing.py / email_assist.py / every
+    # connector but missing from declared deps. A clean
+    # `pip install second-brain` would ImportError on the first
+    # chat call.
+    "anthropic>=0.40",
+    "requests>=2.32",
+    # Round 16 (Phase E) — AES-256-GCM encrypted backups.
+    "cryptography>=43.0",
+]
+
+[project.optional-dependencies]
+local = [
+    "sentence-transformers>=3.0",
+]
+whisper = [
+    "faster-whisper>=1.0",
+]
+voice = [
+    # Cross-platform audio recording for `secondbrain capture`. Auto-VAD
+    # stop (1.5s of silence) so you don't need a hotkey. sounddevice pulls
+    # numpy, which is already on the dep graph via sentence-transformers.
+    "sounddevice>=0.4",
+    "faster-whisper>=1.0",
+]
+ocr = [
+    "pytesseract>=0.3",
+]
+tray = [
+    "pystray>=0.19",
+]
+ner = [
+    "spacy>=3.7",
+]
+dashboard = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.30",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+secondbrain = "secondbrain.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/secondbrain"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+    "E501",  # line too long: we wrap by hand where it matters
+    "E701",  # multiple statements on one line: "if x: continue" is more readable here
+    "SIM105", # try/except/pass is fine for cleanup paths; contextlib import noise isn't worth it
+    "SIM108", # ternary-vs-if-else is a stylistic preference, not a bug
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Typer requires `typer.Argument(...)` / `typer.Option(...)` as default values.
+"src/secondbrain/cli.py" = ["B008"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "-ra",
+    "--strict-markers",
+    "--strict-config",
+]
+markers = [
+    "slow: tests that touch the network or the real index (deselect with '-m \"not slow\"')",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:google.*",
+]

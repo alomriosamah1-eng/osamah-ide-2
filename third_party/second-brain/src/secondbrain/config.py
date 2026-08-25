@@ -1,0 +1,787 @@
+"""Configuration, paths, and ignore rules for second-brain."""
+
+from __future__ import annotations
+
+import fnmatch
+import os
+import tomllib
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from platformdirs import user_data_path
+
+APP_NAME = "secondbrain"
+
+DEFAULT_IGNORE_GLOBS: tuple[str, ...] = (
+    ".git/*",
+    "*/.git/*",
+    "node_modules/*",
+    "*/node_modules/*",
+    ".venv/*",
+    "*/.venv/*",
+    "venv/*",
+    "*/venv/*",
+    "__pycache__/*",
+    "*/__pycache__/*",
+    ".pytest_cache/*",
+    "*/.pytest_cache/*",
+    ".mypy_cache/*",
+    "*/.mypy_cache/*",
+    ".ruff_cache/*",
+    "*/.ruff_cache/*",
+    "AppData/*",
+    "*/AppData/*",
+    ".cache/*",
+    "*/.cache/*",
+    ".secondbrain/*",
+    "*/.secondbrain/*",
+    "*.env",
+    "*.env.*",
+    ".env",
+    ".env.*",
+    "*.key",
+    "*.pem",
+    "*.p12",
+    "*.pfx",
+    "id_rsa*",
+    "id_ed25519*",
+    "*secret*",
+    "*credentials*",
+    "*password*",
+    "*.exe",
+    "*.dll",
+    "*.so",
+    "*.dylib",
+    "*.msi",
+    "*.iso",
+    "*.dmg",
+    "*.zip",
+    "*.7z",
+    "*.tar",
+    "*.tar.gz",
+    "*.tgz",
+    "*.rar",
+    "*.bin",
+    "*.dat",
+    "*.db",
+    "*.sqlite",
+    "*.sqlite3",
+)
+
+DOCUMENT_EXTENSIONS: frozenset[str] = frozenset({
+    ".md", ".markdown", ".txt", ".rst", ".org",
+    ".pdf", ".docx", ".doc", ".odt", ".rtf",
+    ".pptx", ".ppt", ".odp",
+    ".xlsx", ".xls", ".csv", ".ods", ".tsv",
+    ".html", ".htm", ".xml", ".epub",
+    ".json", ".yaml", ".yml", ".toml", ".ini",
+})
+
+CODE_EXTENSIONS: frozenset[str] = frozenset({
+    ".py", ".js", ".ts", ".jsx", ".tsx", ".rs", ".go", ".java",
+    ".kt", ".swift", ".c", ".cpp", ".h", ".hpp", ".cs", ".rb",
+    ".php", ".lua", ".sh", ".bash", ".zsh", ".fish", ".ps1",
+    ".sql", ".r", ".scala", ".clj", ".ex", ".exs", ".elm",
+})
+
+AUDIO_VIDEO_EXTENSIONS: frozenset[str] = frozenset({
+    ".mp3", ".wav", ".m4a", ".flac", ".ogg", ".opus",
+    ".mp4", ".mov", ".avi", ".mkv", ".webm",
+})
+
+IMAGE_EXTENSIONS: frozenset[str] = frozenset({
+    ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".tiff", ".webp", ".heic",
+})
+
+
+def app_data_dir() -> Path:
+    """Return the cross-platform app data directory.
+
+    Round 18 fix (audit-found gap M8) — ``ensure_exists=False`` so
+    bare ``Config()`` instantiation (e.g. in unit tests) doesn't
+    materialize the real user data dir as a side-effect of creating
+    the dataclass. Real callers (CLI/daemon/dashboard) call
+    ``cfg.data_dir.mkdir(parents=True, exist_ok=True)`` lazily on
+    first write, so the directory still gets created when actually
+    needed.
+    """
+    p = user_data_path(APP_NAME, appauthor=False, ensure_exists=False)
+    return Path(p)
+
+
+@dataclass
+class Config:
+    """Runtime configuration."""
+
+    # Paths
+    data_dir: Path = field(default_factory=app_data_dir)
+    watched_folders: list[Path] = field(default_factory=list)
+
+    # Embedder
+    embedder_provider: str = "auto"  # "auto" | "voyage" | "local"
+    voyage_model: str = "voyage-3"
+    voyage_api_key: str | None = None
+    local_model: str = "all-MiniLM-L6-v2"
+
+    # Indexing
+    chunk_size: int = 800
+    chunk_overlap: int = 150
+    max_file_bytes: int = 200 * 1024 * 1024  # 200 MB; media bypasses this when transcribed
+    extra_ignore_globs: tuple[str, ...] = ()
+
+    # Search
+    hybrid_alpha: float = 0.5  # weight: 0=keyword only, 1=vector only
+    adaptive_alpha: bool = True  # auto-tune alpha per query (proper nouns -> BM25, prose -> vector)
+    rerank_enabled: bool = True
+    rerank_model: str = "rerank-2-lite"
+    rerank_overfetch: int = 50  # how many candidates to fetch before reranking down to k
+
+    # Time-decay scoring: gently boost recently-modified files. Half-life is in days.
+    time_decay_enabled: bool = True
+    time_decay_weight: float = 0.1  # 0=ignore time, 1=time only
+    time_decay_half_life_days: float = 365.0
+
+    # HyDE query rewriting: for vague conceptual queries, draft a hypothetical
+    # answer and embed *that*. Big retrieval bump on "what was that thing about X"
+    # style searches. Requires ANTHROPIC_API_KEY; falls back silently to raw
+    # query when unavailable. ~1ยข per query at default Haiku 4.5 model.
+    hyde_enabled: bool = False
+    hyde_model: str = "claude-haiku-4-5"
+
+    # Source-aware ranking: lift personal-content paths over passive downloads.
+    # Match is case-insensitive substring, so "/Documents/" hits any path
+    # containing that segment. Multiplier of 1.0 = no change.
+    personal_path_prefixes: tuple[str, ...] = ("/Documents/", "/notes/", "/OneDrive/")
+    personal_path_boost: float = 1.3
+    download_path_prefixes: tuple[str, ...] = ("/Downloads/",)
+    download_path_demote: float = 0.85
+
+    # Click-feedback ranking: paths the user opened recently get a small
+    # multiplicative boost on subsequent searches. Decays with a half-life
+    # so a path you clicked once last month doesn't dominate forever.
+    # Set click_boost_max to 1.0 to disable entirely.
+    click_boost_enabled: bool = True
+    click_boost_max: float = 1.25  # multiplier when clicked just now
+    click_boost_half_life_days: float = 14.0
+
+    # Media transcription (audio/video -> text via faster-whisper)
+    transcribe_enabled: bool = True
+    whisper_model_size: str = "small"  # tiny/base/small/medium/large-v3
+
+    # Image OCR (text-in-image -> text via Tesseract)
+    ocr_enabled: bool = True
+    ocr_lang: str = "eng"
+
+    # Named-entity recognition (people, orgs, places, dates, money, ...) via spaCy
+    entities_enabled: bool = True
+    spacy_model: str = "en_core_web_sm"
+
+    # Multimodal image embeddings: semantic image search via voyage-multimodal-3.
+    # Images are also OCR'd in parallel; the two paths complement each other.
+    image_embed_enabled: bool = True
+    multimodal_model: str = "voyage-multimodal-3"
+
+    # Daily briefing — Claude reads what's new and writes a summary.
+    # Requires ANTHROPIC_API_KEY. Default model is Opus 4.7 (most capable);
+    # swap to claude-sonnet-4-6 for lower cost or claude-haiku-4-5 for fastest.
+    briefing_model: str = "claude-opus-4-7"
+    briefing_max_tokens: int = 4096
+
+    # Auto-tagging — Claude assigns 1-3 topic tags per chunk.
+    # Run on demand via `secondbrain tag`; defaults to Haiku 4.5 (~$0.0003/chunk).
+    tag_model: str = "claude-haiku-4-5"
+
+    # Connector-specific config (see secondbrain/connectors/*.py for details).
+    # Substack: list of feed URLs to ingest (RSS/Atom).
+    substack_feeds: tuple[str, ...] = ()
+    # Obsidian: vault root directories. Both this and OBSIDIAN_VAULTS work;
+    # the connector parses frontmatter + resolves [[wikilinks]] for retrieval.
+    obsidian_vaults: tuple[str, ...] = ()
+    # iMessage: path to Apple's chat.db. macOS default is
+    # ~/Library/Messages/chat.db. On Windows / Linux you'd copy the
+    # file from a Mac. Both this and IMESSAGE_DB_PATH env work.
+    imessage_db_path: str = ""
+    # Round 20 — global scheduling defaults. Per-person overrides
+    # in scheduling_prefs override these.
+    scheduling_earliest_hour: int = 9        # don't propose < 9am local
+    scheduling_latest_hour: int = 17         # don't propose > 5pm local
+    scheduling_buffer_minutes: int = 15      # padding around busy events
+    # EOD wrap-up time (round 19; explicit here for completeness).
+    eod_send_time: str = "18:00"
+    # User's display name for prompts ("Ben"). Used by followups +
+    # meeting_capture + nudge drafter to refer to the user.
+    user_name: str = ""
+    # User's primary email address — used by auto-resolve to
+    # distinguish "user sent this" from "someone replied to user".
+    # Without this, an incoming reply mentioning the topic could
+    # mistakenly resolve an outgoing followup. Round 21 fix.
+    user_email: str = ""
+    # Jobs connector: companies to watch on each ATS provider. The slug is
+    # whatever appears in the public board URL - e.g. anthropic.com's
+    # Greenhouse board is at boards.greenhouse.io/anthropic, so the slug
+    # is "anthropic".
+    jobs_greenhouse: tuple[str, ...] = ()
+    jobs_lever: tuple[str, ...] = ()
+    jobs_ashby: tuple[str, ...] = ()
+    jobs_smartrecruiters: tuple[str, ...] = ()
+    jobs_recruitee: tuple[str, ...] = ()
+
+    # News connector (NewsAPI.org). Free tier = 100 req/day. Set
+    # NEWSAPI_KEY env var, then pick topics + (optionally) sources to
+    # narrow the firehose.
+    news_topics: tuple[str, ...] = ()
+    news_sources: tuple[str, ...] = ()  # NewsAPI source ids, e.g. "techcrunch"
+    news_window_days: int = 1
+
+    # Generic RSS / Atom feeds. Use for Indeed RSS (where exposed),
+    # Google Alerts (every alert exposes RSS), LinkedIn job-alert RSS,
+    # blogs, anything with a feed.
+    rss_feeds: tuple[str, ...] = ()
+
+    # IMAP connector — universal "email-to-brain" pipe. Point at a Gmail
+    # label or any IMAP folder; every message in the window becomes a
+    # searchable doc. Password lives in SECONDBRAIN_IMAP_PASSWORD env.
+    imap_host: str = ""
+    imap_port: int = 993
+    imap_username: str = ""
+    imap_folders: tuple[str, ...] = ()
+    imap_window_days: int = 14
+    imap_max_per_folder: int = 1000
+
+    # Phase 70 — capture-via-email. IMAP folders / labels listed here
+    # get treated as capture inboxes: each message becomes a doc tagged
+    # with kind=capture and a `[capture]` title prefix so retrieval
+    # can scope to "saved from my phone" content.
+    #
+    # Setup: in Gmail, create a label "ToBrain", forward stuff to it
+    # via filter or share-sheet. Add 'ToBrain' to this list AND to
+    # imap_folders so the connector scans it.
+    capture_imap_folders: tuple[str, ...] = ()
+
+    # Phase 71 — photo capture folder. Path to a folder that gets
+    # auto-OCR + multimodal-embedding treatment as photos land in it
+    # (Camera Roll exports, screenshot syncs). Functionally a watched
+    # folder filtered to images, but kept separate so users can move
+    # their phone-photo dump in/out without touching watched_folders.
+    photo_capture_folder: str = ""
+
+    # Canvas LMS — assignments + announcements + syllabi. Set
+    # CANVAS_BASE_URL + CANVAS_TOKEN env vars to enable. Window controls
+    # how far back/forward (in days) we ingest assignments + announcements.
+    canvas_window_days: int = 60
+
+    # Oura ring — sleep / activity / readiness / workouts / tags.
+    # Set OURA_TOKEN env var (or run `secondbrain auth oura`) to enable.
+    # Ingests one daily-summary doc per day in the window, plus writes
+    # numeric metrics to the health_metrics table for trend queries.
+    oura_window_days: int = 90
+
+    # Phase 78 — Readwise highlights. READWISE_TOKEN env var enables
+    # the connector. Window controls how far back to pull each sync.
+    readwise_window_days: int = 365
+
+    # Phase 89 — local LLM fallback (Ollama). When the primary chat
+    # fails (offline / budget exhausted), fall back to a local model.
+    # Empty host disables the fallback entirely.
+    local_llm_host: str = "http://localhost:11434"
+    local_llm_model: str = "llama3.1"
+
+    # Resume-fit scoring. Drop one or many resumes (PM-flavoured, eng-
+    # flavoured, etc.) here; the watchlist runner embeds them and scores
+    # job postings against them so "great fit" / "stretch" labels appear
+    # next to citations on the dashboard.
+    resume_paths: tuple[str, ...] = ()
+
+    # Pre-event briefings. Daemon polls calendars and generates a
+    # synthesised "what you should know" brief before each event.
+    # Cost: ~$0.05-0.15/briefing depending on web-search fan-out.
+    event_briefing_enabled: bool = True
+    briefing_lookahead_minutes: int = 30  # how far ahead to brief
+    briefing_max_per_run: int = 5         # cost guard per minute
+
+    # Reading queue: high-fit/news watchlist items get a 60-second
+    # auto-summary so you can scan on the train. Cost: ~$0.01-0.05 each.
+    read_queue_enabled: bool = True
+    read_queue_summarise_per_run: int = 5  # per-tick cap
+    read_queue_notify_threshold: int = 5   # tray ping when unread >= this
+
+    # Daily brief (Phase 44) — morning aggregator delivered by email.
+    # Reuses the SMTP config from the digest. When daily_brief_enabled
+    # is true, the daemon checks once a minute and sends at the
+    # configured local time. Pure aggregation, $0 cost.
+    daily_brief_enabled: bool = False
+    daily_brief_send_time: str = "07:00"  # local HH:MM, 24-hour
+
+    # Voice capture (`secondbrain capture`). Auto-VAD stop after the
+    # configured silence duration. Save the .wav for keepsake too.
+    voice_sample_rate: int = 16000
+    voice_silence_rms: float = 0.012        # tune up if your mic is loud
+    voice_silence_seconds: float = 1.5
+    voice_save_audio: bool = True
+
+    # Chat-with-your-brain: conversational interface over the index.
+    # Sonnet 4.6 is the sweet spot - same instruction-following as Opus for
+    # tool-use loops at a third the price. Drop to Haiku 4.5 for speed.
+    chat_model: str = "claude-sonnet-4-6"
+    chat_max_tokens: int = 1500
+    chat_max_tool_iterations: int = 4  # how many search rounds before forcing an answer
+    chat_search_k: int = 6  # default chunks per search_brain call
+
+    # Web search (Anthropic server-side tool). When enabled, Claude can fetch
+    # fresh information from the open web during a chat turn - useful for
+    # "what came out today?", news, recruiting alerts, catching up on a topic.
+    # Off by default because it costs ~$0.01/search above the model fee.
+    web_search_enabled: bool = False
+    web_search_max_uses_per_turn: int = 3  # cost guard per turn
+    # Optional allowlist - if non-empty, only results from these hosts surface.
+    # Useful for recruiting boards (linkedin.com, lever.co, ...) or news
+    # (nytimes.com, ...). Leave empty for unrestricted.
+    web_search_allowed_domains: tuple[str, ...] = ()
+
+    # Email digest: optional daily summary of every watchlist's run since
+    # the last digest. SMTP config is the user's choice; for Gmail use an
+    # app password (https://myaccount.google.com/apppasswords). The send
+    # time is local-timezone HH:MM; the daemon checks once a minute.
+    digest_enabled: bool = False
+    digest_to: str = ""  # comma-separated recipients
+    digest_send_time: str = "08:00"  # local HH:MM, 24-hour
+    digest_smtp_host: str = "smtp.gmail.com"
+    digest_smtp_port: int = 587
+    digest_smtp_user: str = ""
+    digest_smtp_from: str = ""  # falls back to digest_smtp_user when empty
+    # Password lives in the SECONDBRAIN_SMTP_PASSWORD env var, NOT config,
+    # so the user doesn't accidentally check it in.
+
+    # Daily spend caps in cents (so $5 = 500). Refuses paid calls once today's
+    # cumulative spend hits the cap. Set to 0 to disable. Defense in depth -
+    # catches runaway loops fast; not a substitute for provider-side billing limits.
+    daily_budget_cents_voyage: int = 500
+    daily_budget_cents_anthropic: int = 500
+
+    # Per-feature daily caps (Phase 63). When present, prevents one
+    # feature from exhausting the global provider cap and starving
+    # the others. Optional — features without an entry use only the
+    # global cap. Map values are cents/day.
+    #
+    # Example: {"watchlist": 200, "chat": 200, "briefing": 100} —
+    # caps watchlists at $2/day, chat at $2/day, briefings at $1/day,
+    # leaving the rest of the provider budget for ad-hoc use.
+    feature_budget_cents: dict[str, int] = field(default_factory=dict)
+
+    @property
+    def db_path(self) -> Path:
+        return self.data_dir / "index.db"
+
+    @property
+    def config_path(self) -> Path:
+        return self.data_dir / "config.toml"
+
+    @property
+    def ignore_globs(self) -> tuple[str, ...]:
+        return DEFAULT_IGNORE_GLOBS + tuple(self.extra_ignore_globs)
+
+
+def default_config_toml() -> str:
+    return """\
+# second-brain config
+# Edit this file to customize behavior. Restart any running daemon to apply.
+
+# Folders to watch and index. Paths can be absolute or use ~ for home.
+# Used by `secondbrain daemon` and `secondbrain tray`.
+# Example:
+# watched_folders = ["C:/Users/me/Downloads", "C:/Users/me/Documents/notes"]
+watched_folders = []
+
+# Embedder: "auto" picks Voyage if VOYAGE_API_KEY is set, else local.
+# Override with "voyage" or "local".
+embedder_provider = "auto"
+voyage_model = "voyage-3"
+local_model = "all-MiniLM-L6-v2"
+
+# Chunking
+chunk_size = 800
+chunk_overlap = 150
+
+# Hard cap; files this large will be skipped unless they're media (which get transcribed).
+max_file_bytes = 209715200  # 200 MB
+
+# Extra glob patterns to skip (added to built-in defaults).
+extra_ignore_globs = []
+
+# Hybrid search: 0.0 = keyword only, 1.0 = vector only.
+hybrid_alpha = 0.5
+
+# Cross-encoder reranking. When enabled, hybrid search over-fetches candidates
+# and reranks them with a cross-encoder for ~30% precision lift on top results.
+# Requires Voyage API access. Adds ~50-100ms latency per query and a small
+# extra API cost (rerank-2-lite is ~$0.05/1M tokens).
+rerank_enabled = true
+rerank_model = "rerank-2-lite"
+rerank_overfetch = 50
+
+# Adaptive alpha: per-query tuning of vector vs keyword weight. Proper-noun-
+# heavy queries get more BM25; conceptual prose gets more vector.
+adaptive_alpha = true
+
+# Time-decay scoring: gently boost recently-modified files in ranking. With a
+# half-life of 365 days, a year-old file gets ~50% of the recency bonus a
+# brand-new file gets. Set time_decay_weight to 0 to disable entirely.
+time_decay_enabled = true
+time_decay_weight = 0.1
+time_decay_half_life_days = 365.0
+
+# HyDE query rewriting: for vague conceptual queries, ask Claude Haiku to
+# draft a hypothetical answer and embed that for vector search. Big quality
+# bump on "what was that thing about X" queries. Requires ANTHROPIC_API_KEY;
+# silently falls back to raw query when unavailable. Costs ~1c per qualifying
+# query (most short queries skip HyDE entirely - see should_use_hyde).
+hyde_enabled = false
+hyde_model = "claude-haiku-4-5"
+
+# Source-aware ranking: lift personal-content paths over passive downloads.
+# Match is case-insensitive substring. Multiplier of 1.0 means no change.
+# Tweak the path lists to fit how YOU organize your stuff.
+personal_path_prefixes = ["/Documents/", "/notes/", "/OneDrive/"]
+personal_path_boost = 1.3
+download_path_prefixes = ["/Downloads/"]
+download_path_demote = 0.85
+
+# Media transcription. When enabled, audio and video files are transcribed
+# locally via faster-whisper and the transcript flows into the regular index.
+# Requires the [whisper] extra: pip install -e .[whisper]
+transcribe_enabled = true
+whisper_model_size = "small"  # tiny/base/small/medium/large-v3
+
+# Image OCR. When enabled, image files are OCR'd via Tesseract and the text
+# flows into the regular index. Requires the [ocr] extra AND a Tesseract
+# binary on PATH (see README for install).
+ocr_enabled = true
+ocr_lang = "eng"
+
+# Named-entity recognition. When enabled, spaCy extracts people, orgs,
+# places, dates, money, etc. per chunk and stores them for graph queries.
+# Requires the [ner] extra AND a one-time model download:
+#   python -m spacy download en_core_web_sm
+# For higher-quality NER on prose, swap to en_core_web_lg (~750MB):
+#   python -m spacy download en_core_web_lg
+#   then set spacy_model = "en_core_web_lg" below
+entities_enabled = true
+spacy_model = "en_core_web_sm"
+
+# Multimodal image embeddings. When enabled, images are embedded via
+# voyage-multimodal-3 alongside being OCR'd, so semantic image search
+# ("the diagram of X") works in addition to text-in-image search.
+# Requires VOYAGE_API_KEY (no extra needed - voyage SDK already pulled in).
+image_embed_enabled = true
+multimodal_model = "voyage-multimodal-3"
+
+# Daily briefing - Claude summarises what's new in your brain.
+# Requires ANTHROPIC_API_KEY. Switch to claude-sonnet-4-6 for cheaper runs,
+# or claude-haiku-4-5 for fastest.
+briefing_model = "claude-opus-4-7"
+briefing_max_tokens = 4096
+
+# Auto-tagging - Claude assigns 1-3 topic tags per chunk on demand.
+# Run via `secondbrain tag`. Haiku 4.5 is cheap enough to tag a 6K-chunk
+# index for ~$2; bump to claude-sonnet-4-6 for nicer tags at higher cost.
+tag_model = "claude-haiku-4-5"
+
+# Daily spend caps in cents ($5 = 500). Refuses paid API calls once today's
+# spend hits the cap. Set to 0 to disable. Defense in depth - catches runaway
+# loops fast. Not a substitute for provider-side billing limits, but a useful
+# floor on damage when something misbehaves.
+daily_budget_cents_voyage = 500
+daily_budget_cents_anthropic = 500
+"""
+
+
+def load_config(path: Path | None = None) -> Config:
+    """Load config from disk, falling back to defaults."""
+    cfg = Config()
+    config_path = path or cfg.config_path
+    if config_path.exists():
+        with open(config_path, "rb") as f:
+            data = tomllib.load(f)
+        if "watched_folders" in data:
+            cfg.watched_folders = [Path(p).expanduser() for p in data["watched_folders"]]
+        if "embedder_provider" in data:
+            cfg.embedder_provider = data["embedder_provider"]
+        if "voyage_model" in data:
+            cfg.voyage_model = data["voyage_model"]
+        if "local_model" in data:
+            cfg.local_model = data["local_model"]
+        if "chunk_size" in data:
+            cfg.chunk_size = int(data["chunk_size"])
+        if "chunk_overlap" in data:
+            cfg.chunk_overlap = int(data["chunk_overlap"])
+        if "max_file_bytes" in data:
+            cfg.max_file_bytes = int(data["max_file_bytes"])
+        if "extra_ignore_globs" in data:
+            cfg.extra_ignore_globs = tuple(data["extra_ignore_globs"])
+        if "hybrid_alpha" in data:
+            cfg.hybrid_alpha = float(data["hybrid_alpha"])
+        if "rerank_enabled" in data:
+            cfg.rerank_enabled = bool(data["rerank_enabled"])
+        if "rerank_model" in data:
+            cfg.rerank_model = data["rerank_model"]
+        if "rerank_overfetch" in data:
+            cfg.rerank_overfetch = int(data["rerank_overfetch"])
+        if "adaptive_alpha" in data:
+            cfg.adaptive_alpha = bool(data["adaptive_alpha"])
+        if "time_decay_enabled" in data:
+            cfg.time_decay_enabled = bool(data["time_decay_enabled"])
+        if "time_decay_weight" in data:
+            cfg.time_decay_weight = float(data["time_decay_weight"])
+        if "time_decay_half_life_days" in data:
+            cfg.time_decay_half_life_days = float(data["time_decay_half_life_days"])
+        if "hyde_enabled" in data:
+            cfg.hyde_enabled = bool(data["hyde_enabled"])
+        if "hyde_model" in data:
+            cfg.hyde_model = data["hyde_model"]
+        if "personal_path_prefixes" in data:
+            cfg.personal_path_prefixes = tuple(data["personal_path_prefixes"])
+        if "personal_path_boost" in data:
+            cfg.personal_path_boost = float(data["personal_path_boost"])
+        if "download_path_prefixes" in data:
+            cfg.download_path_prefixes = tuple(data["download_path_prefixes"])
+        if "download_path_demote" in data:
+            cfg.download_path_demote = float(data["download_path_demote"])
+        if "click_boost_enabled" in data:
+            cfg.click_boost_enabled = bool(data["click_boost_enabled"])
+        if "click_boost_max" in data:
+            cfg.click_boost_max = float(data["click_boost_max"])
+        if "click_boost_half_life_days" in data:
+            cfg.click_boost_half_life_days = float(data["click_boost_half_life_days"])
+        if "transcribe_enabled" in data:
+            cfg.transcribe_enabled = bool(data["transcribe_enabled"])
+        if "whisper_model_size" in data:
+            cfg.whisper_model_size = data["whisper_model_size"]
+        if "ocr_enabled" in data:
+            cfg.ocr_enabled = bool(data["ocr_enabled"])
+        if "ocr_lang" in data:
+            cfg.ocr_lang = data["ocr_lang"]
+        if "entities_enabled" in data:
+            cfg.entities_enabled = bool(data["entities_enabled"])
+        if "spacy_model" in data:
+            cfg.spacy_model = data["spacy_model"]
+        if "image_embed_enabled" in data:
+            cfg.image_embed_enabled = bool(data["image_embed_enabled"])
+        if "multimodal_model" in data:
+            cfg.multimodal_model = data["multimodal_model"]
+        if "briefing_model" in data:
+            cfg.briefing_model = data["briefing_model"]
+        if "briefing_max_tokens" in data:
+            cfg.briefing_max_tokens = int(data["briefing_max_tokens"])
+        if "tag_model" in data:
+            cfg.tag_model = data["tag_model"]
+        if "chat_model" in data:
+            cfg.chat_model = data["chat_model"]
+        if "chat_max_tokens" in data:
+            cfg.chat_max_tokens = int(data["chat_max_tokens"])
+        if "chat_max_tool_iterations" in data:
+            cfg.chat_max_tool_iterations = int(data["chat_max_tool_iterations"])
+        if "chat_search_k" in data:
+            cfg.chat_search_k = int(data["chat_search_k"])
+        if "web_search_enabled" in data:
+            cfg.web_search_enabled = bool(data["web_search_enabled"])
+        if "web_search_max_uses_per_turn" in data:
+            cfg.web_search_max_uses_per_turn = int(data["web_search_max_uses_per_turn"])
+        if "web_search_allowed_domains" in data:
+            cfg.web_search_allowed_domains = tuple(data["web_search_allowed_domains"])
+        if "digest_enabled" in data:
+            cfg.digest_enabled = bool(data["digest_enabled"])
+        if "digest_to" in data:
+            cfg.digest_to = str(data["digest_to"])
+        if "digest_send_time" in data:
+            cfg.digest_send_time = str(data["digest_send_time"])
+        if "digest_smtp_host" in data:
+            cfg.digest_smtp_host = str(data["digest_smtp_host"])
+        if "digest_smtp_port" in data:
+            cfg.digest_smtp_port = int(data["digest_smtp_port"])
+        if "digest_smtp_user" in data:
+            cfg.digest_smtp_user = str(data["digest_smtp_user"])
+        if "digest_smtp_from" in data:
+            cfg.digest_smtp_from = str(data["digest_smtp_from"])
+        if "substack_feeds" in data:
+            cfg.substack_feeds = tuple(data["substack_feeds"])
+        if "obsidian_vaults" in data:
+            cfg.obsidian_vaults = tuple(data["obsidian_vaults"])
+        if "imessage_db_path" in data:
+            cfg.imessage_db_path = str(data["imessage_db_path"])
+        # Round 21 fix (audit-found gap A-config) — load the round-19
+        # / round-20 EA-shaped fields. Without these blocks the user
+        # could set them in config.toml and it would be a silent
+        # no-op (defaults always won).
+        if "user_name" in data:
+            cfg.user_name = str(data["user_name"])
+        if "user_email" in data:
+            cfg.user_email = str(data["user_email"])
+        if "scheduling_earliest_hour" in data:
+            cfg.scheduling_earliest_hour = int(
+                data["scheduling_earliest_hour"],
+            )
+        if "scheduling_latest_hour" in data:
+            cfg.scheduling_latest_hour = int(
+                data["scheduling_latest_hour"],
+            )
+        if "scheduling_buffer_minutes" in data:
+            cfg.scheduling_buffer_minutes = int(
+                data["scheduling_buffer_minutes"],
+            )
+        if "eod_send_time" in data:
+            cfg.eod_send_time = str(data["eod_send_time"])
+        if "jobs_greenhouse" in data:
+            cfg.jobs_greenhouse = tuple(data["jobs_greenhouse"])
+        if "jobs_lever" in data:
+            cfg.jobs_lever = tuple(data["jobs_lever"])
+        if "jobs_ashby" in data:
+            cfg.jobs_ashby = tuple(data["jobs_ashby"])
+        if "jobs_smartrecruiters" in data:
+            cfg.jobs_smartrecruiters = tuple(data["jobs_smartrecruiters"])
+        if "jobs_recruitee" in data:
+            cfg.jobs_recruitee = tuple(data["jobs_recruitee"])
+        if "news_topics" in data:
+            cfg.news_topics = tuple(data["news_topics"])
+        if "news_sources" in data:
+            cfg.news_sources = tuple(data["news_sources"])
+        if "news_window_days" in data:
+            cfg.news_window_days = int(data["news_window_days"])
+        if "rss_feeds" in data:
+            cfg.rss_feeds = tuple(data["rss_feeds"])
+        # IMAP block: accept either flat `imap_*` keys at the top level or
+        # a nested ``[imap]`` table for cleaner config.toml.
+        imap_block = data.get("imap") if isinstance(data.get("imap"), dict) else None
+        if imap_block:
+            if "host" in imap_block:        cfg.imap_host = str(imap_block["host"])
+            if "port" in imap_block:        cfg.imap_port = int(imap_block["port"])
+            if "username" in imap_block:    cfg.imap_username = str(imap_block["username"])
+            if "folders" in imap_block:     cfg.imap_folders = tuple(imap_block["folders"])
+            if "window_days" in imap_block: cfg.imap_window_days = int(imap_block["window_days"])
+            if "max_per_folder" in imap_block:
+                cfg.imap_max_per_folder = int(imap_block["max_per_folder"])
+        for k in ("imap_host", "imap_port", "imap_username", "imap_folders",
+                  "imap_window_days", "imap_max_per_folder"):
+            if k in data:
+                v = data[k]
+                if k == "imap_folders":
+                    setattr(cfg, k, tuple(v))
+                elif k in ("imap_port", "imap_window_days", "imap_max_per_folder"):
+                    setattr(cfg, k, int(v))
+                else:
+                    setattr(cfg, k, str(v))
+        if "canvas_window_days" in data:
+            cfg.canvas_window_days = int(data["canvas_window_days"])
+        if "oura_window_days" in data:
+            cfg.oura_window_days = int(data["oura_window_days"])
+        if "readwise_window_days" in data:
+            cfg.readwise_window_days = int(data["readwise_window_days"])
+        if "local_llm_host" in data:
+            cfg.local_llm_host = str(data["local_llm_host"])
+        if "local_llm_model" in data:
+            cfg.local_llm_model = str(data["local_llm_model"])
+        if "capture_imap_folders" in data:
+            cfg.capture_imap_folders = tuple(data["capture_imap_folders"])
+        if "photo_capture_folder" in data:
+            cfg.photo_capture_folder = str(data["photo_capture_folder"])
+        # Resume can be either a top-level `resume_paths = [...]` or a
+        # nested `[resume] paths = [...]` block - support both.
+        if "resume_paths" in data:
+            cfg.resume_paths = tuple(data["resume_paths"])
+        if isinstance(data.get("resume"), dict) and "paths" in data["resume"]:
+            cfg.resume_paths = tuple(data["resume"]["paths"])
+        if "event_briefing_enabled" in data:
+            cfg.event_briefing_enabled = bool(data["event_briefing_enabled"])
+        if "briefing_lookahead_minutes" in data:
+            cfg.briefing_lookahead_minutes = int(data["briefing_lookahead_minutes"])
+        if "briefing_max_per_run" in data:
+            cfg.briefing_max_per_run = int(data["briefing_max_per_run"])
+        if "read_queue_enabled" in data:
+            cfg.read_queue_enabled = bool(data["read_queue_enabled"])
+        if "read_queue_summarise_per_run" in data:
+            cfg.read_queue_summarise_per_run = int(data["read_queue_summarise_per_run"])
+        if "read_queue_notify_threshold" in data:
+            cfg.read_queue_notify_threshold = int(data["read_queue_notify_threshold"])
+        if "daily_brief_enabled" in data:
+            cfg.daily_brief_enabled = bool(data["daily_brief_enabled"])
+        if "daily_brief_send_time" in data:
+            cfg.daily_brief_send_time = str(data["daily_brief_send_time"])
+        if "voice_sample_rate" in data:
+            cfg.voice_sample_rate = int(data["voice_sample_rate"])
+        if "voice_silence_rms" in data:
+            cfg.voice_silence_rms = float(data["voice_silence_rms"])
+        if "voice_silence_seconds" in data:
+            cfg.voice_silence_seconds = float(data["voice_silence_seconds"])
+        if "voice_save_audio" in data:
+            cfg.voice_save_audio = bool(data["voice_save_audio"])
+        if "daily_budget_cents_voyage" in data:
+            cfg.daily_budget_cents_voyage = int(data["daily_budget_cents_voyage"])
+        if "daily_budget_cents_anthropic" in data:
+            cfg.daily_budget_cents_anthropic = int(data["daily_budget_cents_anthropic"])
+        # Per-feature caps (Phase 63). Accepts either a top-level dict
+        # or a nested [feature_budget_cents] table.
+        fb = data.get("feature_budget_cents")
+        if isinstance(fb, dict):
+            cfg.feature_budget_cents = {
+                str(k): int(v) for k, v in fb.items()
+            }
+
+    cfg.voyage_api_key = os.environ.get("VOYAGE_API_KEY")
+    _validate_config(cfg)
+    return cfg
+
+
+def _validate_config(cfg: Config) -> None:
+    """Sanity-check loaded values. Raise on combinations that would silently
+    misbehave - e.g. chunk_overlap >= chunk_size produces a sliding window
+    of step=1 and embeds tens of thousands of near-duplicate chunks.
+    """
+    if cfg.chunk_size <= 0:
+        raise ValueError(f"chunk_size must be > 0 (got {cfg.chunk_size})")
+    if cfg.chunk_overlap < 0:
+        raise ValueError(f"chunk_overlap must be >= 0 (got {cfg.chunk_overlap})")
+    if cfg.chunk_overlap >= cfg.chunk_size:
+        raise ValueError(
+            f"chunk_overlap ({cfg.chunk_overlap}) must be < chunk_size "
+            f"({cfg.chunk_size}); otherwise we produce a step-1 sliding window."
+        )
+    # Personal-path prefixes that are too short match every path; warn loudly
+    # rather than silently boost everything.
+    if cfg.personal_path_prefixes:
+        for p in cfg.personal_path_prefixes:
+            if p and len(p.strip("/")) <= 1:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "personal_path_prefixes contains a very short prefix %r; "
+                    "this will boost almost everything", p,
+                )
+
+
+def write_default_config(cfg: Config) -> None:
+    """Write a default config.toml if none exists."""
+    cfg.data_dir.mkdir(parents=True, exist_ok=True)
+    if not cfg.config_path.exists():
+        cfg.config_path.write_text(default_config_toml(), encoding="utf-8")
+
+
+def is_ignored(path: Path, ignore_globs: tuple[str, ...]) -> bool:
+    """Test whether a path matches any ignore glob."""
+    s = path.as_posix()
+    name = path.name
+    for pattern in ignore_globs:
+        if fnmatch.fnmatch(s, pattern) or fnmatch.fnmatch(name, pattern):
+            return True
+    return False
+
+
+def classify_file(path: Path) -> str:
+    """Return one of: 'document', 'code', 'audio_video', 'image', 'other'."""
+    ext = path.suffix.lower()
+    if ext in DOCUMENT_EXTENSIONS:
+        return "document"
+    if ext in CODE_EXTENSIONS:
+        return "code"
+    if ext in AUDIO_VIDEO_EXTENSIONS:
+        return "audio_video"
+    if ext in IMAGE_EXTENSIONS:
+        return "image"
+    return "other"

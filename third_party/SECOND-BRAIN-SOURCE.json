@@ -1,0 +1,21 @@
+{
+  "component": "Second Brain",
+  "vendorPath": "third_party/second-brain",
+  "upstreamRepository": "https://github.com/Ben-K-Jordan/second-brain.git",
+  "upstreamCommit": "2bd13c29ef26bc244287090ad0ca8eee4964d4e7",
+  "upstreamApplicationVersion": "0.0.1",
+  "license": "MIT",
+  "snapshotPolicy": {
+    "sourceIsUnmodified": true,
+    "excludedDirectories": [".git", "node_modules", ".venv", "venv", "__pycache__"],
+    "adaptersLiveOutsideVendorDirectory": true
+  },
+  "integrationPolicy": {
+    "runtimeRole": "knowledge ingestion, notes, sources, search, and task context",
+    "optionalLocalExtras": ["sentence-transformers", "faster-whisper"],
+    "optionalLocalExtrasStatus": "not installed or enabled",
+    "providerSecrets": "server or runtime only; never browser storage",
+    "fallbackGeneration": "forbidden"
+  },
+  "capturedAt": "2026-08-25"
+}

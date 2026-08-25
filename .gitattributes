@@ -1,0 +1,6 @@
+# تظل لقطات المصدر الخارجي غير معدلة كما استوردت؛ لا تعامل مسافاتها الموروثة كأخطاء في رقعة Osamah.
+third_party/presenton/** -whitespace
+third_party/second-brain/** -whitespace
+# يحتوي NOTICE الأصلي على "=======" كعنوان reStructuredText؛ يعامله Git كنص ثنائي كي لا يفسّره كعلامة تعارض.
+third_party/presenton/NOTICE binary
+third_party/presenton/servers/fastapi/NOTICE binary

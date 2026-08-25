@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
-import { InsertUser, users } from "../drizzle/schema";
+import { InsertUser, localAccounts, users } from "../drizzle/schema";
 import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
@@ -89,4 +89,100 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
-// TODO: add feature queries here as your schema grows.
+export async function getUserById(id: number) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db.select().from(users).where(eq(users.id, id)).limit(1);
+  return result[0];
+}
+
+export async function getLocalAccountByEmail(email: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select({ account: localAccounts, user: users })
+    .from(localAccounts)
+    .innerJoin(users, eq(localAccounts.userId, users.id))
+    .where(eq(localAccounts.email, email))
+    .limit(1);
+  return result[0];
+}
+
+export async function createLocalAccount(input: {
+  openId: string;
+  name: string;
+  email: string;
+  passwordHash: string;
+  recoveryQuestion: string;
+  recoveryAnswerHash: string;
+}) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is unavailable.");
+
+  return db.transaction(async tx => {
+    await tx.insert(users).values({
+      openId: input.openId,
+      name: input.name,
+      email: input.email,
+      loginMethod: "local",
+      lastSignedIn: new Date(),
+    });
+    const createdUser = await tx.select().from(users).where(eq(users.openId, input.openId)).limit(1);
+    const user = createdUser[0];
+    if (!user) throw new Error("Local account user creation failed.");
+    await tx.insert(localAccounts).values({
+      userId: user.id,
+      email: input.email,
+      passwordHash: input.passwordHash,
+      recoveryQuestion: input.recoveryQuestion,
+      recoveryAnswerHash: input.recoveryAnswerHash,
+    });
+    return user;
+  });
+}
+
+export async function updateLocalAccountPassword(userId: number, passwordHash: string) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is unavailable.");
+  await db.update(localAccounts).set({ passwordHash }).where(eq(localAccounts.userId, userId));
+  await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, userId));
+}
+
+export async function touchLocalUser(userId: number) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is unavailable.");
+  await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, userId));
+}
+
+export function normalizeLocalEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+export async function updateLocalAccountProfile(userId: number, input: { name?: string; email?: string }) {
+  const db = await getDb();
+  if (!db) throw new Error("Database is unavailable.");
+
+  const [account] = await db.select().from(localAccounts).where(eq(localAccounts.userId, userId)).limit(1);
+  if (!account) throw new Error("Local account profile is unavailable for this user.");
+
+  const email = input.email ? normalizeLocalEmail(input.email) : undefined;
+  if (email && email !== account.email) {
+    const [emailOwner] = await db.select().from(localAccounts).where(eq(localAccounts.email, email)).limit(1);
+    if (emailOwner && emailOwner.userId !== userId) throw new Error("Local email address is already in use.");
+  }
+
+  const userValues = {
+    ...(input.name ? { name: input.name.trim() } : {}),
+    ...(email ? { email } : {}),
+  };
+  if (Object.keys(userValues).length > 0) {
+    await db.update(users).set(userValues).where(eq(users.id, userId));
+  }
+  if (email) {
+    await db.update(localAccounts).set({ email }).where(eq(localAccounts.userId, userId));
+  }
+
+  const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+  if (!user) throw new Error("Local user profile was not found after update.");
+  return user;
+}

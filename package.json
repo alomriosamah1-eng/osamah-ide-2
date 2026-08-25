@@ -12,6 +12,8 @@
     "test": "vitest run",
     "verify:opencode": "node --import tsx scripts/verify-embedded-opencode.mjs",
     "verify:opencode:session": "node --import tsx scripts/verify-embedded-opencode-session.mjs",
+    "verify:integration-boundary": "node scripts/verify-integration-boundary.mjs",
+    "verify:workspace-e2e": "node scripts/verify-workspace-e2e.mjs",
     "db:push": "drizzle-kit generate && drizzle-kit migrate"
   },
   "dependencies": {
