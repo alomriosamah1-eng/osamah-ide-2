@@ -108,10 +108,21 @@ export async function getLocalAccountByEmail(email: string) {
   return result[0];
 }
 
+export async function getLocalAccountByKey(accountKey: string) {
+  const db = await getDb();
+  if (!db) return undefined;
+  const result = await db
+    .select({ account: localAccounts, user: users })
+    .from(localAccounts)
+    .innerJoin(users, eq(localAccounts.userId, users.id))
+    .where(eq(localAccounts.accountKey, accountKey))
+    .limit(1);
+  return result[0];
+}
+
 export async function createLocalAccount(input: {
   openId: string;
-  name: string;
-  email: string;
+  accountKey: string;
   passwordHash: string;
   recoveryQuestion: string;
   recoveryAnswerHash: string;
@@ -122,8 +133,6 @@ export async function createLocalAccount(input: {
   return db.transaction(async tx => {
     await tx.insert(users).values({
       openId: input.openId,
-      name: input.name,
-      email: input.email,
       loginMethod: "local",
       lastSignedIn: new Date(),
     });
@@ -132,7 +141,7 @@ export async function createLocalAccount(input: {
     if (!user) throw new Error("Local account user creation failed.");
     await tx.insert(localAccounts).values({
       userId: user.id,
-      email: input.email,
+      accountKey: input.accountKey,
       passwordHash: input.passwordHash,
       recoveryQuestion: input.recoveryQuestion,
       recoveryAnswerHash: input.recoveryAnswerHash,

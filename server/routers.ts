@@ -2,9 +2,11 @@ import { COOKIE_NAME } from "@shared/const";
 import { TRPCError } from "@trpc/server";
 import { createHash } from "node:crypto";
 import { z } from "zod";
+import { enginesRouter } from "./engines/router";
 import {
   createLocalAccount,
   getLocalAccountByEmail,
+  getLocalAccountByKey,
   touchLocalUser,
   updateLocalAccountPassword,
   updateLocalAccountProfile,
@@ -32,6 +34,7 @@ import { workspaceRouter } from "./workspace/router";
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
+  engines: enginesRouter,
   opencode: openCodeRouter,
   presenton: presentonRouter,
   presentations: presentationsRouter,
@@ -43,20 +46,17 @@ export const appRouter = router({
     me: publicProcedure.query(opts => opts.ctx.user),
     local: router({
       register: publicProcedure.input(z.object({
-        name: z.string().trim().min(1).max(160),
-        email: z.string().trim().email().max(320),
+        accountKey: z.string().uuid(),
         password: z.string().min(8).max(256),
         recoveryQuestion: z.string().trim().min(1).max(128),
         recoveryAnswer: z.string().trim().min(1).max(256),
       })).mutation(async ({ ctx, input }) => {
-        const email = input.email.toLowerCase();
-        const existing = await getLocalAccountByEmail(email);
-        if (existing) throw new TRPCError({ code: "CONFLICT", message: "A local account already exists for this email." });
-        const openId = `local:${createHash("sha256").update(email).digest("hex").slice(0, 58)}`;
+        const existing = await getLocalAccountByKey(input.accountKey);
+        if (existing) throw new TRPCError({ code: "CONFLICT", message: "A local account already exists in this browser." });
+        const openId = `local:${createHash("sha256").update(input.accountKey).digest("hex").slice(0, 58)}`;
         const user = await createLocalAccount({
           openId,
-          name: input.name,
-          email,
+          accountKey: input.accountKey,
           passwordHash: await hashLocalPassword(input.password),
           recoveryQuestion: input.recoveryQuestion,
           recoveryAnswerHash: await hashRecoveryAnswer(input.recoveryAnswer),
@@ -68,12 +68,12 @@ export const appRouter = router({
         return { id: user.id, name: user.name, email: user.email };
       }),
       login: publicProcedure.input(z.object({
-        email: z.string().trim().email().max(320),
+        accountKey: z.string().uuid(),
         password: z.string().min(1).max(256),
       })).mutation(async ({ ctx, input }) => {
-        const account = await getLocalAccountByEmail(input.email.toLowerCase());
+        const account = await getLocalAccountByKey(input.accountKey);
         if (!account || !await verifyLocalPassword(input.password, account.account.passwordHash)) {
-          throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid local email or password." });
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Invalid local password or browser account." });
         }
         await touchLocalUser(account.user.id);
         ctx.res.cookie(LOCAL_SESSION_COOKIE, await createLocalSession(account.user.id), {
@@ -82,18 +82,18 @@ export const appRouter = router({
         });
         return { id: account.user.id, name: account.user.name, email: account.user.email };
       }),
-      recoveryQuestion: publicProcedure.input(z.object({ email: z.string().trim().email().max(320) }))
+      recoveryQuestion: publicProcedure.input(z.object({ accountKey: z.string().uuid() }))
         .query(async ({ input }) => {
-          const account = await getLocalAccountByEmail(input.email.toLowerCase());
-          if (!account) throw new TRPCError({ code: "NOT_FOUND", message: "Local account not found." });
+          const account = await getLocalAccountByKey(input.accountKey);
+          if (!account) throw new TRPCError({ code: "NOT_FOUND", message: "No local account exists in this browser." });
           return { recoveryQuestion: account.account.recoveryQuestion };
         }),
       resetPassword: publicProcedure.input(z.object({
-        email: z.string().trim().email().max(320),
+        accountKey: z.string().uuid(),
         recoveryAnswer: z.string().trim().min(1).max(256),
         newPassword: z.string().min(8).max(256),
       })).mutation(async ({ ctx, input }) => {
-        const account = await getLocalAccountByEmail(input.email.toLowerCase());
+        const account = await getLocalAccountByKey(input.accountKey);
         if (!account || !await verifyRecoveryAnswer(input.recoveryAnswer, account.account.recoveryAnswerHash)) {
           throw new TRPCError({ code: "UNAUTHORIZED", message: "Local account recovery verification failed." });
         }

@@ -11,7 +11,7 @@ afterEach(() => {
 describe("OpenCode execution authorization gate", () => {
   it("rejects a session creation request when execution is not explicitly enabled", async () => {
     delete process.env.OPENCODE_EMBEDDED_EXECUTION_ENABLED;
-    const caller = openCodeRouter.createCaller({} as never);
+    const caller = openCodeRouter.createCaller({ user: { id: 1 } } as never);
 
     await expect(caller.session.create({})).rejects.toMatchObject({
       code: "FORBIDDEN",

@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { router, publicProcedure } from "../_core/trpc";
+import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
+import { buildAgentWorkspacePrompt, type AgentWorkspaceSection } from "../engines/router";
 import { embeddedOpenCodeStatus, readEmbeddedOpenCodePackage } from "./embeddedRuntime.js";
 import {
   createOpenCodeSession,
@@ -18,6 +19,7 @@ const modelSelection = z.object({
   providerID: z.string().min(1).max(256),
   variant: z.string().min(1).max(256).optional(),
 });
+const workspaceSection = z.enum(["dashboard", "programming", "presentations", "mind", "settings"]);
 
 function exposeGatewayError(error: unknown): never {
   if (error instanceof OpenCodeGatewayError) {
@@ -27,12 +29,11 @@ function exposeGatewayError(error: unknown): never {
 }
 
 /**
- * The current local AuthGate is a browser-only onboarding flow, not a
- * server-issued identity. Tool-capable session routes must remain closed on a
- * public deployment until a server-side authorization policy replaces this
- * explicit development opt-in.
+ * Tool-capable session routes require the server-issued local account session
+ * and an explicit server-side execution opt-in. Browser data is never trusted
+ * as the agent's workspace context.
  */
-const openCodeExecutionProcedure = publicProcedure.use(async ({ next }) => {
+const openCodeExecutionProcedure = protectedProcedure.use(async ({ next }) => {
   if (process.env.OPENCODE_EMBEDDED_EXECUTION_ENABLED !== "1") {
     throw new TRPCError({
       code: "FORBIDDEN",
@@ -54,12 +55,14 @@ export const openCodeRouter = router({
     create: openCodeExecutionProcedure.input(z.object({ model: modelSelection.optional() })).mutation(async ({ input }) => {
       return createOpenCodeSession(input.model).catch(exposeGatewayError);
     }),
-    prompt: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1), text: z.string().trim().min(1).max(32_000) })).mutation(async ({ input }) => {
-      return promptOpenCodeSession(input.sessionID, input.text).catch(exposeGatewayError);
+    prompt: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1), text: z.string().trim().min(1).max(32_000), section: workspaceSection })).mutation(async ({ ctx, input }) => {
+      const prompt = await buildAgentWorkspacePrompt(ctx.user.id, input.section as AgentWorkspaceSection, input.text);
+      return promptOpenCodeSession(input.sessionID, prompt).catch(exposeGatewayError);
     }),
-    send: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1), text: z.string().trim().min(1).max(32_000) })).mutation(async ({ input }) => {
+    send: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1), text: z.string().trim().min(1).max(32_000), section: workspaceSection })).mutation(async ({ ctx, input }) => {
       try {
-        await promptOpenCodeSession(input.sessionID, input.text);
+        const prompt = await buildAgentWorkspacePrompt(ctx.user.id, input.section as AgentWorkspaceSection, input.text);
+        await promptOpenCodeSession(input.sessionID, prompt);
         await waitForOpenCodeSession(input.sessionID);
         const [messages, permissions] = await Promise.all([
           listOpenCodeMessages(input.sessionID),

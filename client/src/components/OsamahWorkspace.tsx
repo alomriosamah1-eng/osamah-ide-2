@@ -239,6 +239,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   const [pendingPermissions, setPendingPermissions] = useState<Array<{ id: string; label: string }>>([]);
   const activeSessionId = useRef<string | null>(null);
   const runtimeQuery = trpc.opencode.status.useQuery();
+  const engineContextQuery = trpc.engines.context.useQuery({ section: workspace }, { retry: false });
   const modelsQuery = trpc.opencode.models.useQuery(undefined, {
     enabled: runtimeQuery.data?.health === "healthy",
     retry: false,
@@ -335,7 +336,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
       const createdSession = await createSession.mutateAsync({ model: { id: selectedModel.modelId, providerID: selectedModel.providerId, variant: selectedModel.variant } });
       const sessionID = activeSessionId.current ?? createdSession.id;
       activeSessionId.current = sessionID;
-      const result = await sendToSession.mutateAsync({ sessionID, text: message }) as {
+      const result = await sendToSession.mutateAsync({ sessionID, text: message, section: workspace }) as {
         messages: Array<{ id: string; role: "user" | "assistant"; text: string }>;
         permissions: Array<{ id: string; label: string }>;
       };
@@ -389,6 +390,21 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
         <span>{isAr ? "سياق مساحة العمل" : "Workspace context"}</span>
         <strong>{t[workspace]}</strong>
         <div className="context-chip"><Sparkles size={13} /> {isAr ? "جلسات OpenCode الفعلية فقط" : "Real OpenCode sessions only"}</div>
+        <div className="engine-context-summary" aria-live="polite">
+          <span>{isAr ? "محركات القسم" : "Section engines"}</span>
+          <div>
+            {engineContextQuery.isLoading && <small>{isAr ? "يتم فحص المحركات…" : "Checking engines…"}</small>}
+            {engineContextQuery.isError && <small>{isAr ? "تعذر قراءة حالة المحركات." : "Engine status could not be read."}</small>}
+            {(engineContextQuery.data?.engines ?? []).map(engine => (
+              <span className={`engine-context-chip engine-${engine.status}`} key={engine.id} title={engine.detail}>
+                {engine.name}: {engine.agentReady ? (isAr ? "جاهز" : "ready") : (isAr ? "غير جاهز" : "not ready")}
+              </span>
+            ))}
+          </div>
+          {engineContextQuery.data && <small>{isAr
+            ? `${engineContextQuery.data.workspace.projectCount} مشاريع · ${engineContextQuery.data.workspace.taskCount} مهام · يُضاف هذا السياق خادمياً عند إرسال رسالة.`
+            : `${engineContextQuery.data.workspace.projectCount} projects · ${engineContextQuery.data.workspace.taskCount} tasks · This context is added server-side when a message is sent.`}</small>}
+        </div>
       </div>
 
       <div className="agent-steps">

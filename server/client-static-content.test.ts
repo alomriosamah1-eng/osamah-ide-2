@@ -51,6 +51,12 @@ describe("الواجهة الخادمية الصادقة", () => {
     expect(authSource).not.toContain("المحطات: 03 جاهزة");
   });
 
+  it("يستبعد الاسم والبريد من نموذج إنشاء الحساب المحلي", () => {
+    expect(authSource).not.toContain('autoComplete="name"');
+    expect(authSource).not.toContain('autoComplete="email"');
+    expect(authSource).toContain("LOCAL_ACCOUNT_KEY_STORAGE");
+  });
+
   it("يفحص كل مكونات وصفحات العميل الحية لعبارات الحالة المصطنعة المعروفة", () => {
     const prohibitedPhrases = [
       "Coffee Export",

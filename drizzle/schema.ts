@@ -38,7 +38,10 @@ export type InsertUser = typeof users.$inferInsert;
 export const localAccounts = mysqlTable("localAccounts", {
   id: int("id").autoincrement().primaryKey(),
   userId: int("userId").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
-  email: varchar("email", { length: 320 }).notNull().unique(),
+  /** Public, random per-browser lookup key; it is not a password or a session credential. */
+  accountKey: varchar("accountKey", { length: 64 }).notNull().unique(),
+  /** Retained only for legacy local accounts and an optional later profile; new local registration does not collect it. */
+  email: varchar("email", { length: 320 }),
   passwordHash: varchar("passwordHash", { length: 255 }).notNull(),
   recoveryQuestion: varchar("recoveryQuestion", { length: 128 }).notNull(),
   recoveryAnswerHash: varchar("recoveryAnswerHash", { length: 255 }).notNull(),

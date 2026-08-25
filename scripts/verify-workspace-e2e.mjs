@@ -30,7 +30,7 @@ const client = createTRPCProxyClient({
 });
 
 const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-const email = `workspace-e2e-${suffix}@example.invalid`;
+const accountKey = crypto.randomUUID();
 const updatedEmail = `workspace-e2e-updated-${suffix}@example.invalid`;
 const password = `E2e-${suffix}-Secure`;
 let projectId;
@@ -46,13 +46,16 @@ let secondBrainTaskIds = [];
 
 try {
   const account = await client.auth.local.register.mutate({
-    name: "Workspace E2E",
-    email,
+    accountKey,
     password,
     recoveryQuestion: "اسم هذا التحقق؟",
     recoveryAnswer: "Osamah",
   });
   if (!account.id || !cookie) throw new Error("Registration did not issue a local session cookie.");
+  const recoveryQuestion = await client.auth.local.recoveryQuestion.query({ accountKey });
+  if (recoveryQuestion.recoveryQuestion !== "اسم هذا التحقق؟") {
+    throw new Error("The local recovery question was not persisted without name or email.");
+  }
 
   const initialPreferences = await client.preferences.get.query();
   if (initialPreferences.language !== "ar" || initialPreferences.theme !== "dark") {
@@ -228,7 +231,7 @@ try {
   if (cookie) throw new Error("Logout did not clear the local session cookie.");
 
   console.log(JSON.stringify({
-    verified: ["local-session", "server-preferences-create-update", "local-profile-update", "presenton-source-status", "presentation-create-rename-delete", "presentation-slide-create-update-reorder-delete", "project-create-update-delete", "file-create-save-rename-delete", "task-create-update-delete", "activity-log", "second-brain-note-task-extraction", "second-brain-search", "second-brain-link-create-update-delete", "second-brain-self-link-rejected"],
+    verified: ["local-password-recovery-registration", "server-preferences-create-update", "local-profile-update", "presenton-source-status", "presentation-create-rename-delete", "presentation-slide-create-update-reorder-delete", "project-create-update-delete", "file-create-save-rename-delete", "task-create-update-delete", "activity-log", "second-brain-note-task-extraction", "second-brain-search", "second-brain-link-create-update-delete", "second-brain-self-link-rejected"],
     cleanedWorkspaceContent: true,
   }, null, 2));
 } catch (error) {
