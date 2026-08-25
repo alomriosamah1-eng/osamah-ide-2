@@ -624,7 +624,7 @@ function CommandPalette({ lang, onClose, onNavigate }: { lang: Language; onClose
 }
 
 export default function OsamahWorkspace() {
-  const [language, setLanguage] = useState<Language>("en");
+  const [language, setLanguage] = useState<Language>("ar");
   const [workspace, setWorkspace] = useState<Workspace>("dashboard");
   const [isAICollapsed, setAIcollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);

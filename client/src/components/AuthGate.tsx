@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, CheckCircle2, Eye, EyeOff, KeyRound, LockKeyhole, Moon, Orbit, RefreshCcw, ShieldCheck, Sparkles, Sun, UserRound } from "lucide-react";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
+import "./auth-motion.css";
 
 type Language = "ar" | "en";
 type AuthMode = "login" | "register" | "recover-email" | "recover-answer" | "recover-reset";
@@ -48,7 +49,7 @@ export function hasLocalSession() {
 export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => void }) {
   const { theme, toggleTheme } = useTheme();
   const account = useMemo(() => readAccount(), []);
-  const [language, setLanguage] = useState<Language>("en");
+  const [language, setLanguage] = useState<Language>("ar");
   const [mode, setMode] = useState<AuthMode>(account ? "login" : "register");
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState("");
@@ -59,6 +60,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<{ type: "error" | "success"; text: string } | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [activeField, setActiveField] = useState<string | null>(null);
 
   const isAr = language === "ar";
   const directionArrow = isAr ? ArrowLeft : ArrowRight;
@@ -77,6 +79,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
   const title = mode === "login" ? content.welcome : mode === "register" ? content.create : mode === "recover-reset" ? content.reset : content.recover;
   const detail = mode === "login" ? content.welcomeDetail : mode === "register" ? content.createDetail : mode === "recover-reset" ? content.resetDetail : content.recoverDetail;
   const actionLabel = mode === "login" ? content.signIn : mode === "register" ? content.signUp : mode === "recover-email" ? content.continue : mode === "recover-answer" ? content.verify : content.update;
+  const provisionPhase = activeField === "identity" || activeField === "email" ? "identity" : activeField ? "security" : "workspace";
 
   useEffect(() => {
     document.documentElement.lang = language;
@@ -134,7 +137,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
 
   const fieldMotion = { initial: { opacity: 0, y: 10 }, animate: { opacity: 1, y: 0 }, exit: { opacity: 0, y: -8 }, transition: { duration: 0.22 } };
 
-  return <main className="auth-shell" dir={isAr ? "rtl" : "ltr"}>
+  return <main className={`auth-shell ${activeField ? "is-field-active" : ""}`} dir={isAr ? "rtl" : "ltr"}>
     <div className="auth-grid" aria-hidden="true" />
     <motion.div className="auth-topbar" initial={{ opacity: 0, y: -14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.55 }}>
       <div className="auth-brand"><img src={ORBIT_MARK} alt="" /><div><strong><em>O</em>SAMAH<span>/</span><em>I</em>DE</strong><small>{content.brandLine}</small></div></div>
@@ -143,25 +146,31 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
     <section className="auth-stage">
       <motion.aside className="auth-visual" initial={{ opacity: 0, x: isAr ? 30 : -30 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.65 }}>
         <div className="auth-signal"><span className="auth-live-dot" />{content.signal}</div>
-        <div className="auth-orbit-system" aria-hidden="true"><i className="orbit-ring ring-one" /><i className="orbit-ring ring-two" /><i className="orbit-ring ring-three" /><span className="orbit-core"><img src={ORBIT_MARK} alt="" /></span><b className="orbit-node node-a" /><b className="orbit-node node-b" /><b className="orbit-node node-c" /></div>
+        <div className="auth-orbit-system" aria-hidden="true"><i className="orbit-ring ring-one" /><i className="orbit-ring ring-two" /><i className="orbit-ring ring-three" /><span className="orbit-satellite satellite-one" /><span className="orbit-satellite satellite-two" /><span className="orbit-core"><img src={ORBIT_MARK} alt="" /></span><b className="orbit-node node-a" /><b className="orbit-node node-b" /><b className="orbit-node node-c" /></div>
         <div className="auth-visual-copy"><span>{content.trust}</span><h1>{isAr ? "مساحة عملك، بإشارةٍ خاصة." : "Your work, on a private signal."}</h1><p>{isAr ? "بوابة محلية للكود والعروض وسياق المعرفة — تفتح مساحة العمل وتبقي قراراتك على هذا الجهاز." : "A local command gate for code, presentations, and knowledge context — opening your workspace while keeping decisions on this device."}</p></div>
         <div className="auth-trust-list"><div><ShieldCheck size={16} /><span>{content.privacy}</span></div><div><LockKeyhole size={16} /><span>{content.encrypted}</span></div><div><RefreshCcw size={16} /><span>{content.recovery}</span></div></div>
       </motion.aside>
       <motion.section className="auth-card" initial={{ opacity: 0, x: isAr ? -30 : 30, scale: 0.98 }} animate={{ opacity: 1, x: 0, scale: 1 }} transition={{ duration: 0.62, delay: 0.08 }}>
         <div className="auth-card-head"><div className="auth-step"><span>{mode === "register" ? "01" : mode.startsWith("recover") ? "02" : "00"}</span><i /></div><span className="auth-local-badge"><LockKeyhole size={11} /> {content.trust}</span></div>
         <div className="auth-context-rail"><span><i /> {isAr ? "السياق: محلي ومحمٍ" : "CONTEXT: LOCAL + PROTECTED"}</span><span><i /> {isAr ? "المحطات: 03 جاهزة" : "NODES: 03 READY"}</span><span><i /> {isAr ? "المسار: مساحة العمل" : "ROUTE: WORKSPACE"}</span></div>
-        <div className="auth-intelligence-track" aria-hidden="true"><span className="auth-track-label">{isAr ? "إشارة التكيّف" : "ADAPTIVE SIGNAL"}</span><div><i /><i /><i /><b /></div><span>{isAr ? "يراقب الحقول النشطة" : "WATCHING ACTIVE FIELDS"}</span></div>
+        <div className={`auth-intelligence-track ${activeField ? "is-active" : ""}`} aria-hidden="true"><span className="auth-track-label">{isAr ? "إشارة التكيّف" : "ADAPTIVE SIGNAL"}</span><div><i /><i /><i /><b /></div><span>{activeField ? (isAr ? "يتابع الحقل النشط" : "TRACKING ACTIVE FIELD") : (isAr ? "يراقب الحقول النشطة" : "WATCHING ACTIVE FIELDS")}</span></div>
+        <div className={`auth-provision-path phase-${provisionPhase}`} aria-label={isAr ? "مسار تهيئة مساحة العمل" : "Workspace provisioning path"}>
+          <span className="provision-connector" aria-hidden="true" />
+          <div className="provision-node provision-identity"><i><UserRound size={11} /></i><b>{isAr ? "الهوية" : "Identity"}</b><small>{isAr ? "محلي" : "Local"}</small></div>
+          <div className="provision-node provision-security"><i><ShieldCheck size={11} /></i><b>{isAr ? "الحماية" : "Security"}</b><small>{isAr ? "مشفّر" : "Encrypted"}</small></div>
+          <div className="provision-node provision-workspace"><i><Orbit size={11} /></i><b>{isAr ? "المساحة" : "Workspace"}</b><small>{isAr ? "جاهزة" : "Ready"}</small></div>
+        </div>
         <AnimatePresence mode="wait">
           <motion.div key={mode} {...fieldMotion} className="auth-card-copy"><span className="auth-eyebrow"><Sparkles size={13} /> {mode === "login" ? content.enter : content.trust}</span><h2>{title}</h2><p>{detail}</p></motion.div>
         </AnimatePresence>
         <form onSubmit={submit} className="auth-form" dir={isAr ? "rtl" : "ltr"} lang={isAr ? "ar" : "en"}>
           <AnimatePresence mode="popLayout">
-            {mode === "register" && <motion.label {...fieldMotion} className="auth-field"><span>{content.name}</span><div><UserRound size={15} /><input value={name} onChange={(event) => { setName(event.target.value); clearFeedback(); }} autoComplete="name" required /></div></motion.label>}
-            {(mode === "login" || mode === "register" || mode === "recover-email") && <motion.label {...fieldMotion} className="auth-field"><span>{content.email}</span><div><Orbit size={15} /><input type="email" value={email} onChange={(event) => { setEmail(event.target.value); clearFeedback(); }} autoComplete="email" required /></div></motion.label>}
-            {mode === "register" && <motion.label {...fieldMotion} className="auth-field"><span>{content.question}</span><div><ShieldCheck size={15} /><select value={question} onChange={(event) => setQuestion(event.target.value)}>{questions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div></motion.label>}
-            {(mode === "register" || mode === "recover-answer") && <motion.label {...fieldMotion} className="auth-field"><span>{mode === "recover-answer" ? questions.find((item) => item.id === readAccount()?.recoveryQuestion)?.label ?? content.question : content.answer}</span><div><KeyRound size={15} /><input value={answer} onChange={(event) => { setAnswer(event.target.value); clearFeedback(); }} autoComplete="off" required /></div><small>{content.answerHint}</small></motion.label>}
-            {(mode === "login" || mode === "register" || mode === "recover-reset") && <motion.label {...fieldMotion} className="auth-field"><span>{content.password}</span><div><LockKeyhole size={15} /><input type={showPassword ? "text" : "password"} value={password} onChange={(event) => { setPassword(event.target.value); clearFeedback(); }} autoComplete={mode === "login" ? "current-password" : "new-password"} required /><button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button></div><small>{mode === "login" ? "" : content.passwordHint}</small></motion.label>}
-            {(mode === "register" || mode === "recover-reset") && <motion.label {...fieldMotion} className="auth-field"><span>{content.confirm}</span><div><CheckCircle2 size={15} /><input type={showPassword ? "text" : "password"} value={confirmPassword} onChange={(event) => { setConfirmPassword(event.target.value); clearFeedback(); }} autoComplete="new-password" required /></div></motion.label>}
+            {mode === "register" && <motion.label {...fieldMotion} className="auth-field"><span>{content.name}</span><div><UserRound size={15} /><input value={name} onFocus={() => setActiveField("identity")} onBlur={() => setActiveField(null)} onChange={(event) => { setName(event.target.value); clearFeedback(); }} autoComplete="name" required /></div></motion.label>}
+            {(mode === "login" || mode === "register" || mode === "recover-email") && <motion.label {...fieldMotion} className="auth-field"><span>{content.email}</span><div><Orbit size={15} /><input type="email" value={email} onFocus={() => setActiveField("email")} onBlur={() => setActiveField(null)} onChange={(event) => { setEmail(event.target.value); clearFeedback(); }} autoComplete="email" required /></div></motion.label>}
+            {mode === "register" && <motion.label {...fieldMotion} className="auth-field"><span>{content.question}</span><div><ShieldCheck size={15} /><select value={question} onFocus={() => setActiveField("recovery")} onBlur={() => setActiveField(null)} onChange={(event) => setQuestion(event.target.value)}>{questions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div></motion.label>}
+            {(mode === "register" || mode === "recover-answer") && <motion.label {...fieldMotion} className="auth-field"><span>{mode === "recover-answer" ? questions.find((item) => item.id === readAccount()?.recoveryQuestion)?.label ?? content.question : content.answer}</span><div><KeyRound size={15} /><input value={answer} onFocus={() => setActiveField("answer")} onBlur={() => setActiveField(null)} onChange={(event) => { setAnswer(event.target.value); clearFeedback(); }} autoComplete="off" required /></div><small>{content.answerHint}</small></motion.label>}
+            {(mode === "login" || mode === "register" || mode === "recover-reset") && <motion.label {...fieldMotion} className="auth-field"><span>{content.password}</span><div><LockKeyhole size={15} /><input type={showPassword ? "text" : "password"} value={password} onFocus={() => setActiveField("password")} onBlur={() => setActiveField(null)} onChange={(event) => { setPassword(event.target.value); clearFeedback(); }} autoComplete={mode === "login" ? "current-password" : "new-password"} required /><button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button></div><small>{mode === "login" ? "" : content.passwordHint}</small></motion.label>}
+            {(mode === "register" || mode === "recover-reset") && <motion.label {...fieldMotion} className="auth-field"><span>{content.confirm}</span><div><CheckCircle2 size={15} /><input type={showPassword ? "text" : "password"} value={confirmPassword} onFocus={() => setActiveField("confirmation")} onBlur={() => setActiveField(null)} onChange={(event) => { setConfirmPassword(event.target.value); clearFeedback(); }} autoComplete="new-password" required /></div></motion.label>}
           </AnimatePresence>
           <AnimatePresence>{feedback && <motion.div className={`auth-feedback ${feedback.type}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}><span>{feedback.type === "success" ? <CheckCircle2 size={15} /> : <ShieldCheck size={15} />}</span>{feedback.text}</motion.div>}</AnimatePresence>
           <motion.button whileTap={{ scale: 0.975 }} whileHover={{ y: -1 }} className="auth-submit" disabled={submitting} type="submit">{submitting ? content.processing : actionLabel}<DirectionArrow size={16} /></motion.button>
