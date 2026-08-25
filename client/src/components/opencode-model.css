@@ -33,9 +33,19 @@
 .opencode-model-option-copy small { color: #8291b1; font: 7px "JetBrains Mono", monospace; letter-spacing: .015em; }
 .message-model-tag { display: inline-flex; width: fit-content; margin-top: 5px; padding: 2px 5px; border: 1px solid rgba(117,157,255,.19); border-radius: 4px; background: rgba(94,140,255,.08); color: #8eaeff; font: 7px "JetBrains Mono", monospace; letter-spacing: .025em; }
 .agent-message p { white-space: pre-line; }
+.opencode-permission { display: grid; gap: 6px; margin: 8px 0; padding: 9px; border: 1px solid rgba(218,170,84,.32); border-radius: 9px; background: linear-gradient(135deg, rgba(218,170,84,.13), rgba(94,140,255,.06)); color: #dce7ff; }
+.opencode-permission strong { color: #ffd48a; font-size: 9px; font-weight: 650; }
+.opencode-permission p { margin: 0; color: #aab8d5; font: 8px/1.45 "JetBrains Mono", monospace; overflow-wrap: anywhere; }
+.opencode-permission > div { display: flex; flex-wrap: wrap; gap: 5px; }
+.opencode-permission button { min-height: 25px; padding: 0 7px; border: 1px solid rgba(145,171,240,.28); border-radius: 6px; background: rgba(94,140,255,.12); color: #d3e0ff; font-size: 8px; font-weight: 600; transition: transform .16s var(--ease-out), border-color .16s var(--ease-out), background .16s var(--ease-out), opacity .16s var(--ease-out); }
+.opencode-permission button:hover:not(:disabled) { border-color: rgba(163,192,255,.72); background: rgba(94,140,255,.25); }
+.opencode-permission button:last-child { border-color: rgba(224,115,115,.34); background: rgba(214,105,105,.1); color: #ffc3c3; }
+.opencode-permission button:active:not(:disabled) { transform: scale(.97); }
+.opencode-permission button:disabled { cursor: wait; opacity: .55; }
 .lang-ar .opencode-model-row { direction: rtl; }
 .lang-ar .opencode-runtime-card { direction: rtl; text-align: right; }
 .lang-ar .opencode-connection-row { direction: rtl; text-align: right; }
+.lang-ar .opencode-permission { direction: rtl; text-align: right; }
 .lang-ar .opencode-connection-controls input { direction: ltr; text-align: left; }
 .lang-ar .opencode-model-copy { text-align: right; }
 .lang-ar .opencode-model-option-copy { text-align: right; }
@@ -57,4 +67,9 @@
 :root:not(.dark) .opencode-model-option { color: #263a64 !important; }
 :root:not(.dark) .opencode-model-option-copy small { color: #697c9c; }
 :root:not(.dark) .message-model-tag { color: #355fae; background: rgba(94,140,255,.11); }
-@media (prefers-reduced-motion: reduce) { .opencode-model-trigger, .opencode-model-option, .opencode-connection-controls input, .opencode-connection-controls button { transition: none !important; } }
+:root:not(.dark) .opencode-permission { border-color: rgba(163,120,49,.32); background: linear-gradient(135deg, rgba(255,241,205,.72), rgba(230,239,255,.55)); color: #314a7c; }
+:root:not(.dark) .opencode-permission strong { color: #8d5d13; }
+:root:not(.dark) .opencode-permission p { color: #5e7196; }
+:root:not(.dark) .opencode-permission button { border-color: rgba(69,101,167,.3); background: rgba(94,140,255,.1); color: #355fae; }
+:root:not(.dark) .opencode-permission button:last-child { border-color: rgba(177,75,75,.32); background: rgba(214,105,105,.08); color: #a44c4c; }
+@media (prefers-reduced-motion: reduce) { .opencode-model-trigger, .opencode-model-option, .opencode-connection-controls input, .opencode-connection-controls button, .opencode-permission button { transition: none !important; } }

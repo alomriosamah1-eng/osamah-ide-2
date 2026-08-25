@@ -3,16 +3,11 @@
  * A calm, premium desktop command room with blue-orbit context cues, smoked-glass panels,
  * and the AI layer integrated into each workspace rather than isolated as a generic chat.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { createOpenCodeChatEnvelope, getOpenCodeModel, initialOpenCodeCatalog } from "@/lib/opencode-contract";
-import {
-  OpenCodeConnectionError,
-  discoverOpenCodeModels,
-  loadOpenCodeConnection,
-  saveOpenCodeConnection,
-} from "@/lib/opencode-client";
+import { catalogFromEmbeddedOpenCode, getOpenCodeModel, initialOpenCodeCatalog } from "@/lib/opencode-contract";
+import { trpc } from "@/lib/trpc";
 import "./opencode-model.css";
 import {
   Bell,
@@ -215,11 +210,26 @@ function TaskRow({
 function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Workspace; lang: Language; collapsed: boolean; onCollapse: () => void }) {
   const isAr = lang === "ar";
   const [draft, setDraft] = useState("");
-  const [modelCatalog, setModelCatalog] = useState(initialOpenCodeCatalog);
   const [selectedModelValue, setSelectedModelValue] = useState("");
   const [messages, setMessages] = useState<Array<{ role: "agent" | "user"; text: string; model?: string }>>([]);
-  const [connectionUrl, setConnectionUrl] = useState(() => loadOpenCodeConnection()?.baseUrl ?? "");
   const [connectionMessage, setConnectionMessage] = useState("");
+  const [pendingPermissions, setPendingPermissions] = useState<Array<{ id: string; label: string }>>([]);
+  const activeSessionId = useRef<string | null>(null);
+  const runtimeQuery = trpc.opencode.status.useQuery();
+  const modelsQuery = trpc.opencode.models.useQuery(undefined, {
+    enabled: runtimeQuery.data?.health === "healthy",
+    retry: false,
+  });
+  const createSession = trpc.opencode.session.create.useMutation();
+  const sendToSession = trpc.opencode.session.send.useMutation();
+  const replyPermission = trpc.opencode.session.replyPermission.useMutation();
+  const modelCatalog = useMemo(() => {
+    if (runtimeQuery.isLoading || modelsQuery.isFetching) return { runtime: "checking" as const, models: [] };
+    if (runtimeQuery.data?.health !== "healthy") {
+      return { runtime: runtimeQuery.data?.phase === "unreachable" ? "offline" as const : "degraded" as const, models: [] };
+    }
+    return modelsQuery.data ? catalogFromEmbeddedOpenCode(modelsQuery.data) : initialOpenCodeCatalog;
+  }, [modelsQuery.data, modelsQuery.isFetching, runtimeQuery.data, runtimeQuery.isLoading]);
   const selectedModel = useMemo(
     () => getOpenCodeModel(modelCatalog, selectedModelValue),
     [modelCatalog, selectedModelValue],
@@ -227,7 +237,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   const runtimeState = {
     unconfigured: {
       label: isAr ? "OpenCode غير مهيأ" : "OpenCode not configured",
-      detail: isAr ? "لم تُكتشف نماذج مفعّلة بعد. شغّل OpenCode، ثم افحص اتصال الخادم المحلي لعرض القائمة." : "No enabled models have been discovered. Start OpenCode, then check its local server to populate this list.",
+      detail: isAr ? "لم تُكتشف نماذج مفعّلة من المحرك المضمّن بعد." : "No enabled models have been discovered from the embedded runtime yet.",
       tone: "amber" as const,
     },
     checking: {
@@ -237,7 +247,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     },
     ready: {
       label: isAr ? "OpenCode جاهز" : "OpenCode ready",
-      detail: isAr ? "تم اكتشاف نماذج مفعّلة من OpenCode. سيبقى تنفيذ الرسائل متوقفاً حتى تُضاف جلسات التنفيذ والموافقات." : "Enabled models were discovered from OpenCode. Message execution remains off until session and permission handling is added.",
+      detail: isAr ? "المحرك المضمّن صحي؛ يتطلب التنفيذ تفويضاً خادمياً صريحاً ثم يستخدم جلسة OpenCode حقيقية." : "The embedded runtime is healthy; execution needs explicit server authorization, then uses a real OpenCode session.",
       tone: "green" as const,
     },
     degraded: {
@@ -279,53 +289,21 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     mind: isAr ? ["استخرج الرؤى", "اربط المصادر"] : ["Extract insights", "Connect sources"],
     settings: isAr ? ["اقترح تهيئة", "راجع الإعدادات"] : ["Suggest a setup", "Review settings"],
   };
-  const chatReply = {
-    dashboard: isAr ? "سأرتب العمل حسب أثره على عرض المستثمرين وأضع الخطوة التالية في الطابور." : "I’ll prioritize the work by its impact on the investor deck and queue the next action.",
-    programming: isAr ? "سأجهز تعديلاً قابلاً للمراجعة وأعرض الاختبارات المتأثرة قبل تطبيقه." : "I’ll prepare a reviewable change and show the affected tests before applying it.",
-    presentations: isAr ? "سأستخدم البحث المتصل لتحويل هذه النقطة إلى قصة أوضح قابلة للعرض." : "I’ll use the connected research to turn this into a clearer, presentation-ready story.",
-    mind: isAr ? "سأجمع الأدلة ذات الصلة في ملخص قصير مع الروابط التي تدعمه." : "I’ll collect the relevant evidence into a concise synthesis with the links that support it.",
-    settings: isAr ? "سأقارن الإعداد الحالي بنمط عملك وأقترح التعديل الأقل إزعاجاً." : "I’ll compare the current setup against your workflow and suggest the least disruptive adjustment.",
-  };
-
-  const inspectOpenCode = async (candidate = connectionUrl) => {
-    if (!candidate.trim()) {
-      setModelCatalog(initialOpenCodeCatalog);
+  const inspectOpenCode = async () => {
+    setConnectionMessage(isAr ? "يجري فحص محرك OpenCode المضمّن…" : "Checking the embedded OpenCode runtime…");
+    const runtime = await runtimeQuery.refetch();
+    if (runtime.data?.health !== "healthy") {
       setSelectedModelValue("");
-      setConnectionMessage(isAr ? "أدخل عنوان خادم OpenCode المحلي أولاً، مثل http://127.0.0.1:PORT." : "Enter the local OpenCode server address first, for example http://127.0.0.1:PORT.");
+      setConnectionMessage(isAr ? "المحرك المضمّن غير صحي بعد؛ لن تُرسل أي رسالة." : "The embedded runtime is not healthy yet; no message will be sent.");
       return;
     }
-
-    setModelCatalog({ runtime: "checking", models: [] });
+    const models = await modelsQuery.refetch();
     setSelectedModelValue("");
-    setConnectionMessage(isAr ? "يجري فحص خادم OpenCode المحلي…" : "Checking the local OpenCode server…");
-
-    try {
-      const discovery = await discoverOpenCodeModels(candidate);
-      saveOpenCodeConnection({ baseUrl: discovery.endpoint });
-      setConnectionUrl(discovery.endpoint);
-      setModelCatalog(discovery.catalog);
-      setConnectionMessage(
-        isAr
-          ? discovery.catalog.models.length > 0
-            ? `اكتشف OpenCode ${discovery.catalog.models.length} نموذجاً مفعّلاً عبر ${discovery.providerCount} مزوّدات.`
-            : "اتصل OpenCode بنجاح، لكن لا توجد نماذج مفعّلة في تهيئته الحالية."
-          : discovery.catalog.models.length > 0
-            ? `OpenCode discovered ${discovery.catalog.models.length} enabled model(s) across ${discovery.providerCount} provider(s).`
-            : "OpenCode responded successfully, but no enabled models are available in its current configuration.",
-      );
-    } catch (error) {
-      const connectionError = error instanceof OpenCodeConnectionError ? error : null;
-      setModelCatalog({ runtime: connectionError?.kind === "offline" ? "offline" : "degraded", models: [] });
-      setConnectionMessage(
-        connectionError?.kind === "invalid-endpoint"
-          ? isAr
-            ? "العنوان غير مقبول. استخدم أصل خادم OpenCode المحلي فقط، من دون مسار أو بيانات دخول."
-            : "The address is not allowed. Use only the local OpenCode server origin, without a path or credentials."
-          : isAr
-            ? "تعذر التحقق من OpenCode. تأكد أنه يعمل محلياً وأنه يسمح لأصل هذه الواجهة عبر CORS."
-            : "OpenCode could not be verified. Confirm it is running locally and permits this interface origin through CORS.",
-      );
-    }
+    setConnectionMessage(
+      isAr
+        ? `المحرك المضمّن صحي واكتشف ${models.data?.length ?? 0} نموذجاً مفعّلاً.`
+        : `The embedded runtime is healthy and discovered ${models.data?.length ?? 0} enabled model(s).`,
+    );
   };
 
   useEffect(() => {
@@ -333,31 +311,41 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     setMessages([{ role: "agent", text: chatSeed[workspace] }]);
   }, [workspace, lang]);
 
-  useEffect(() => {
-    const savedConnection = loadOpenCodeConnection();
-    if (savedConnection) {
-      setConnectionUrl(savedConnection.baseUrl);
-      void inspectOpenCode(savedConnection.baseUrl);
-    }
-  }, []);
-
-  const sendMessage = (text = draft) => {
+  const sendMessage = async (text = draft) => {
     const message = text.trim();
     if (!message) return;
-    const envelope = createOpenCodeChatEnvelope({ message, workspace, language: lang, model: selectedModel });
-    const modelNotice = isAr
-      ? selectedModel
-        ? `لم تُرسل رسالتك بعد. حُفظت مع نموذج OpenCode المكتشف ${selectedModel.label.ar} (${envelope.model?.providerId}/${envelope.model?.modelId}) بانتظار بوابة التنفيذ.`
-        : "لم تُرسل رسالتك لأن OpenCode لم يكتشف نموذجاً مهيأً بعد. شغّل OpenCode وهيّئ مزوداً أولاً."
-      : selectedModel
-        ? `Your message was not sent yet. It was retained with the discovered OpenCode model ${selectedModel.label.en} (${envelope.model?.providerId}/${envelope.model?.modelId}) while the execution gateway is pending.`
-        : "Your message was not sent because OpenCode has not discovered a configured model yet. Start OpenCode and configure a provider first.";
-    setMessages((current) => [
-      ...current,
-      { role: "user", text: message, model: selectedModel?.label[lang] },
-      { role: "agent", text: modelNotice, model: runtimeState.label },
-    ]);
+    if (!selectedModel || modelCatalog.runtime !== "ready") {
+      setMessages(current => [...current, { role: "agent", text: isAr ? "لا يمكن الإرسال قبل أن يصبح المحرك المضمّن صحياً ويكتشف نموذجاً فعلياً." : "Sending requires a healthy embedded runtime and a discovered model.", model: runtimeState.label }]);
+      return;
+    }
+    setMessages(current => [...current, { role: "user", text: message, model: selectedModel.label[lang] }]);
     setDraft("");
+    try {
+      const createdSession = await createSession.mutateAsync({ model: { id: selectedModel.modelId, providerID: selectedModel.providerId, variant: selectedModel.variant } });
+      const sessionID = activeSessionId.current ?? createdSession.id;
+      activeSessionId.current = sessionID;
+      const result = await sendToSession.mutateAsync({ sessionID, text: message }) as {
+        messages: Array<{ id: string; role: "user" | "assistant"; text: string }>;
+        permissions: Array<{ id: string; label: string }>;
+      };
+      const replies = result.messages.filter(entry => entry.role === "assistant");
+      setMessages(current => [...current, ...(replies.length ? replies.map(reply => ({ role: "agent" as const, text: reply.text, model: selectedModel.label[lang] })) : [{ role: "agent" as const, text: isAr ? "اكتمل طلب OpenCode ولم يُرجع نصاً بعد." : "OpenCode completed the request without a text response yet.", model: selectedModel.label[lang] }])]);
+      setPendingPermissions(result.permissions);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : isAr ? "حدث تعذر غير معروف." : "An unknown failure occurred.";
+      setMessages(current => [...current, { role: "agent", text: isAr ? `لم تُنفّذ الرسالة: ${detail}` : `The message was not executed: ${detail}`, model: runtimeState.label }]);
+    }
+  };
+
+  const decidePermission = async (requestID: string, reply: "once" | "always" | "reject") => {
+    if (!activeSessionId.current) return;
+    try {
+      await replyPermission.mutateAsync({ sessionID: activeSessionId.current, requestID, reply });
+      setPendingPermissions(current => current.filter(permission => permission.id !== requestID));
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : "Unknown error";
+      setConnectionMessage(isAr ? `تعذر تسجيل الموافقة: ${detail}` : `Permission response failed: ${detail}`);
+    }
   };
 
   if (collapsed) {
@@ -409,50 +397,46 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
 
       <div className="agent-conversation" aria-label={isAr ? "دردشة وكيل مساحة العمل" : "Workspace agent chat"}>
         <SectionLabel action={<span className="agent-context-status"><Signal tone="blue" pulse /> {isAr ? "سياق حي" : "Live context"}</span>}>{isAr ? "دردشة الوكيل" : "Agent chat"}</SectionLabel>
-        <div className="agent-messages">
-          {messages.slice(-3).map((message, index) => <div className={`agent-message message-${message.role}`} key={`${message.role}-${index}-${message.text}`}><span>{message.role === "agent" ? "OS" : isAr ? "أنت" : "You"}</span>{message.model && <small className="message-model-tag">{message.model}</small>}<p>{message.text}</p></div>)}
-        </div>
-        <div className="agent-prompt-row">{chatPrompts[workspace].map((prompt) => <button key={prompt} onClick={() => sendMessage(prompt)}>{prompt}</button>)}</div>
+          <div className="agent-messages">
+            {messages.slice(-3).map((message, index) => <div className={`agent-message message-${message.role}`} key={`${message.role}-${index}-${message.text}`}><span>{message.role === "agent" ? "OS" : isAr ? "أنت" : "You"}</span>{message.model && <small className="message-model-tag">{message.model}</small>}<p>{message.text}</p></div>)}
+            {pendingPermissions.map((permission) => (
+              <div className="opencode-permission" key={permission.id}>
+                <strong>{isAr ? "موافقة OpenCode مطلوبة" : "OpenCode permission required"}</strong>
+                <p>{permission.label}</p>
+                <div>
+                  <button disabled={replyPermission.isPending} onClick={() => void decidePermission(permission.id, "once")}>{isAr ? "سماح مرة" : "Allow once"}</button>
+                  <button disabled={replyPermission.isPending} onClick={() => void decidePermission(permission.id, "always")}>{isAr ? "السماح دائماً" : "Always allow"}</button>
+                  <button disabled={replyPermission.isPending} onClick={() => void decidePermission(permission.id, "reject")}>{isAr ? "رفض" : "Reject"}</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        <div className="agent-prompt-row">{chatPrompts[workspace].map((prompt) => <button key={prompt} disabled={createSession.isPending || sendToSession.isPending} onClick={() => void sendMessage(prompt)}>{prompt}</button>)}</div>
       </div>
 
       <div className="ai-composer">
-        <textarea rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendMessage(); } }} placeholder={isAr ? "اطلب من ذكاء أسامة…" : "Ask Osamah AI…"} aria-label={isAr ? "رسالة للمساعد" : "Message the assistant"} />
+        <textarea rows={2} value={draft} disabled={createSession.isPending || sendToSession.isPending} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={isAr ? "اطلب من ذكاء أسامة…" : "Ask Osamah AI…"} aria-label={isAr ? "رسالة للمساعد" : "Message the assistant"} />
         <div className={`opencode-runtime-card runtime-${modelCatalog.runtime}`} role="status" aria-live="polite">
           <span><Signal tone={runtimeState.tone} pulse={modelCatalog.runtime === "checking"} /> OpenCode runtime</span>
           <strong>{runtimeState.label}</strong>
           <small>{runtimeState.detail}</small>
         </div>
-        <form
-          className="opencode-connection-row"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void inspectOpenCode();
-          }}
-        >
+        <div className="opencode-connection-row">
           <div className="opencode-connection-copy">
-            <span><PlugZap size={11} /> {isAr ? "اتصال محلي" : "Local connection"}</span>
-            <small>{isAr ? "خادم OpenCode على جهازك — لا مفاتيح ولا نماذج محلية" : "OpenCode server on your device — no keys or local models"}</small>
+            <span><PlugZap size={11} /> {isAr ? "محرك مضمّن" : "Embedded runtime"}</span>
+            <small>{isAr ? "مصدر OpenCode الحقيقي داخل Osamah — لا مفاتيح ولا نماذج ثابتة" : "Real OpenCode source inside Osamah — no keys or fixed models"}</small>
           </div>
           <div className="opencode-connection-controls">
-            <input
-              value={connectionUrl}
-              onChange={(event) => setConnectionUrl(event.target.value)}
-              placeholder="http://127.0.0.1:PORT"
-              inputMode="url"
-              autoComplete="off"
-              spellCheck={false}
-              aria-label={isAr ? "عنوان خادم OpenCode المحلي" : "Local OpenCode server address"}
-            />
-            <button type="submit" disabled={modelCatalog.runtime === "checking"}>{isAr ? "فحص" : "Check"}</button>
+            <button type="button" onClick={() => void inspectOpenCode()} disabled={modelCatalog.runtime === "checking"}>{isAr ? "فحص المحرك" : "Check runtime"}</button>
           </div>
           {connectionMessage && <small className="opencode-connection-feedback">{connectionMessage}</small>}
-        </form>
+        </div>
         <div className="opencode-model-row">
           <div className="opencode-model-copy">
             <span><Signal tone="blue" pulse /> OpenCode</span>
             <small>{isAr ? "نماذج OpenCode المكتشفة" : "Discovered OpenCode models"}</small>
           </div>
-          <Select value={selectedModelValue} onValueChange={setSelectedModelValue} disabled={modelCatalog.models.length === 0}>
+          <Select value={selectedModelValue} onValueChange={(value) => { activeSessionId.current = null; setPendingPermissions([]); setSelectedModelValue(value); }} disabled={modelCatalog.models.length === 0 || createSession.isPending || sendToSession.isPending}>
             <SelectTrigger className="opencode-model-trigger" size="sm" aria-label={isAr ? "اختيار نموذج OpenCode" : "Choose an OpenCode model"}>
               <SelectValue placeholder={isAr ? "بانتظار نماذج OpenCode" : "Waiting for OpenCode models"} />
             </SelectTrigger>
@@ -467,7 +451,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
         </div>
         <div className="composer-foot">
           <span><Command size={12} /> {isAr ? "مرتبط بـ" : "Grounded in"} {labels[workspace]}</span>
-          <button onClick={() => sendMessage()} aria-label={isAr ? "إرسال" : "Send"}><Send size={15} /></button>
+          <button disabled={createSession.isPending || sendToSession.isPending || !draft.trim()} onClick={() => void sendMessage()} aria-label={isAr ? "إرسال" : "Send"}><Send size={15} /></button>
         </div>
       </div>
     </aside>

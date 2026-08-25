@@ -11,6 +11,7 @@ export type OpenCodeModelPreference = {
   value: string;
   providerId: string;
   modelId: string;
+  variant?: string;
   label: { ar: string; en: string };
   detail: { ar: string; en: string };
   source: "runtime";
@@ -20,6 +21,14 @@ export type OpenCodeModelCatalog = {
   runtime: OpenCodeRuntimeState;
   discoveredAt?: string;
   models: OpenCodeModelPreference[];
+};
+
+export type EmbeddedOpenCodeModel = {
+  id: string;
+  providerID: string;
+  name: string;
+  variant?: string;
+  supportsTools: boolean;
 };
 
 export type OpenCodeChatEnvelope = {
@@ -38,6 +47,35 @@ export const initialOpenCodeCatalog: OpenCodeModelCatalog = {
 
 export function getOpenCodeModel(catalog: OpenCodeModelCatalog, value: string): OpenCodeModelPreference | undefined {
   return catalog.models.find((model) => model.value === value);
+}
+
+/**
+ * Converts only the model records returned by Osamah's server-side OpenCode
+ * gateway. There is deliberately no fallback provider or model list.
+ */
+export function catalogFromEmbeddedOpenCode(models: EmbeddedOpenCodeModel[]): OpenCodeModelCatalog {
+  const catalogModels = models.map((model) => {
+    const suffix = model.variant ? `:${model.variant}` : "";
+    const reference = `${model.providerID}/${model.id}${suffix}`;
+    return {
+      value: reference,
+      providerId: model.providerID,
+      modelId: model.id,
+      variant: model.variant,
+      label: { ar: model.name, en: model.name },
+      detail: {
+        ar: model.supportsTools ? "نموذج OpenCode يدعم الأدوات" : "نموذج OpenCode المكتشف",
+        en: model.supportsTools ? "OpenCode model with tool support" : "Discovered OpenCode model",
+      },
+      source: "runtime" as const,
+    };
+  });
+
+  return {
+    runtime: catalogModels.length > 0 ? "ready" : "unconfigured",
+    discoveredAt: new Date().toISOString(),
+    models: catalogModels,
+  };
 }
 
 export function createOpenCodeChatEnvelope(input: {
