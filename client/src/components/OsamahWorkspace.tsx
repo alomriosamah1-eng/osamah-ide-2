@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { createOpenCodeChatEnvelope, getOpenCodeModel, initialOpenCodeCatalog } from "@/lib/opencode-contract";
 import "./opencode-model.css";
 import {
   Bell,
@@ -49,23 +50,6 @@ import {
 type Language = "ar" | "en";
 type Workspace = "dashboard" | "programming" | "presentations" | "mind" | "settings";
 type SettingsSection = "general" | "appearance" | "workspace" | "agents" | "notifications" | "integrations" | "security";
-
-type OpenCodeModelPreference = {
-  value: string;
-  providerId: string;
-  modelId: string;
-  label: { ar: string; en: string };
-  detail: { ar: string; en: string };
-};
-
-/** OpenCode accepts providerID/modelID pairs; these are preferred routing choices pending local runtime discovery. */
-const openCodeModelPreferences: OpenCodeModelPreference[] = [
-  { value: "local/default", providerId: "local", modelId: "default", label: { ar: "تلقائي من OpenCode", en: "OpenCode automatic" }, detail: { ar: "استخدم الإعداد المحلي", en: "Use local configuration" } },
-  { value: "anthropic/claude", providerId: "anthropic", modelId: "claude", label: { ar: "Anthropic · Claude", en: "Anthropic · Claude" }, detail: { ar: "للمهام التحليلية المعقدة", en: "For complex reasoning" } },
-  { value: "openai/gpt", providerId: "openai", modelId: "gpt", label: { ar: "OpenAI · GPT", en: "OpenAI · GPT" }, detail: { ar: "للتنفيذ والمراجعة", en: "For execution and review" } },
-  { value: "google/gemini", providerId: "google", modelId: "gemini", label: { ar: "Google · Gemini", en: "Google · Gemini" }, detail: { ar: "للسياق والوسائط", en: "For context and media" } },
-  { value: "openrouter/auto", providerId: "openrouter", modelId: "auto", label: { ar: "OpenRouter · تلقائي", en: "OpenRouter · automatic" }, detail: { ar: "يوجه عبر مزودك المهيأ", en: "Routes through your configured provider" } },
-];
 
 const content = {
   en: {
@@ -225,11 +209,12 @@ function TaskRow({
 function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Workspace; lang: Language; collapsed: boolean; onCollapse: () => void }) {
   const isAr = lang === "ar";
   const [draft, setDraft] = useState("");
+  const [modelCatalog] = useState(initialOpenCodeCatalog);
   const [selectedModelValue, setSelectedModelValue] = useState("local/default");
   const [messages, setMessages] = useState<Array<{ role: "agent" | "user"; text: string; model?: string }>>([]);
   const selectedModel = useMemo(
-    () => openCodeModelPreferences.find((model) => model.value === selectedModelValue) ?? openCodeModelPreferences[0],
-    [selectedModelValue],
+    () => getOpenCodeModel(modelCatalog, selectedModelValue),
+    [modelCatalog, selectedModelValue],
   );
   const labels = {
     dashboard: isAr ? "ملخص المهام الموحدة" : "Unified task brief",
@@ -275,9 +260,10 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   const sendMessage = (text = draft) => {
     const message = text.trim();
     if (!message) return;
+    const envelope = createOpenCodeChatEnvelope({ message, workspace, language: lang, model: selectedModel });
     const modelNotice = isAr
-      ? `تفضيل OpenCode الحالي: ${selectedModel.label.ar}. سيُرسل هذا الاختيار إلى المحرك المحلي عند ربطه.`
-      : `Current OpenCode preference: ${selectedModel.label.en}. This selection will be sent to the local engine when connected.`;
+      ? `تفضيل OpenCode الحالي: ${selectedModel.label.ar}. سيتم تمرير ${envelope.model.providerId}/${envelope.model.modelId} إلى المحرك المحلي عند تهيئته.`
+      : `Current OpenCode preference: ${selectedModel.label.en}. ${envelope.model.providerId}/${envelope.model.modelId} will be sent to the local engine when ready.`;
     setMessages((current) => [
       ...current,
       { role: "user", text: message, model: selectedModel.label[lang] },
@@ -353,7 +339,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
               <SelectValue />
             </SelectTrigger>
             <SelectContent className="opencode-model-content" align={isAr ? "start" : "end"} dir={isAr ? "rtl" : "ltr"}>
-              {openCodeModelPreferences.map((model) => (
+              {modelCatalog.models.map((model) => (
                 <SelectItem key={model.value} value={model.value} className="opencode-model-option">
                   <span className="opencode-model-option-copy"><strong>{model.label[lang]}</strong><small>{model.detail[lang]} · {model.providerId}/{model.modelId}</small></span>
                 </SelectItem>
