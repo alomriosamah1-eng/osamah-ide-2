@@ -150,10 +150,11 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
       <motion.section className="auth-card" initial={{ opacity: 0, x: isAr ? -30 : 30, scale: 0.98 }} animate={{ opacity: 1, x: 0, scale: 1 }} transition={{ duration: 0.62, delay: 0.08 }}>
         <div className="auth-card-head"><div className="auth-step"><span>{mode === "register" ? "01" : mode.startsWith("recover") ? "02" : "00"}</span><i /></div><span className="auth-local-badge"><LockKeyhole size={11} /> {content.trust}</span></div>
         <div className="auth-context-rail"><span><i /> {isAr ? "السياق: محلي ومحمٍ" : "CONTEXT: LOCAL + PROTECTED"}</span><span><i /> {isAr ? "المحطات: 03 جاهزة" : "NODES: 03 READY"}</span><span><i /> {isAr ? "المسار: مساحة العمل" : "ROUTE: WORKSPACE"}</span></div>
+        <div className="auth-intelligence-track" aria-hidden="true"><span className="auth-track-label">{isAr ? "إشارة التكيّف" : "ADAPTIVE SIGNAL"}</span><div><i /><i /><i /><b /></div><span>{isAr ? "يراقب الحقول النشطة" : "WATCHING ACTIVE FIELDS"}</span></div>
         <AnimatePresence mode="wait">
           <motion.div key={mode} {...fieldMotion} className="auth-card-copy"><span className="auth-eyebrow"><Sparkles size={13} /> {mode === "login" ? content.enter : content.trust}</span><h2>{title}</h2><p>{detail}</p></motion.div>
         </AnimatePresence>
-        <form onSubmit={submit} className="auth-form">
+        <form onSubmit={submit} className="auth-form" dir={isAr ? "rtl" : "ltr"} lang={isAr ? "ar" : "en"}>
           <AnimatePresence mode="popLayout">
             {mode === "register" && <motion.label {...fieldMotion} className="auth-field"><span>{content.name}</span><div><UserRound size={15} /><input value={name} onChange={(event) => { setName(event.target.value); clearFeedback(); }} autoComplete="name" required /></div></motion.label>}
             {(mode === "login" || mode === "register" || mode === "recover-email") && <motion.label {...fieldMotion} className="auth-field"><span>{content.email}</span><div><Orbit size={15} /><input type="email" value={email} onChange={(event) => { setEmail(event.target.value); clearFeedback(); }} autoComplete="email" required /></div></motion.label>}
