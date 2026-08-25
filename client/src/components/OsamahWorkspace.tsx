@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { catalogFromEmbeddedOpenCode, getOpenCodeModel, initialOpenCodeCatalog } from "@/lib/opencode-contract";
 import { trpc } from "@/lib/trpc";
 import "./opencode-model.css";
+import "./theia-runtime.css";
 import {
   Bell,
   BookOpen,
@@ -548,6 +549,31 @@ function ExplorerItem({ icon, label, active, depth = 0, badge }: { icon: React.R
 
 function Programming({ lang }: { lang: Language }) {
   const isAr = lang === "ar";
+  const theiaStatusQuery = trpc.theia.status.useQuery(undefined, { retry: false });
+  const theiaSourceQuery = trpc.theia.source.useQuery(undefined, { retry: false });
+  const theiaPhase = theiaStatusQuery.data?.phase;
+  const theiaTone = theiaStatusQuery.isLoading
+    ? "blue"
+    : theiaPhase === "running"
+      ? "green"
+      : theiaPhase === "build-required"
+        ? "amber"
+        : theiaPhase === "source-missing" || theiaPhase === "unreachable"
+          ? "coral"
+          : "slate";
+  const theiaLabel = theiaStatusQuery.isLoading
+    ? (isAr ? "يتم الفحص" : "Checking")
+    : theiaPhase === "running"
+      ? (isAr ? "يعمل" : "Running")
+      : theiaPhase === "build-required"
+        ? (isAr ? "يتطلب بناء" : "Build required")
+        : theiaPhase === "ready"
+          ? (isAr ? "مبني وغير مشغّل" : "Built, not running")
+          : theiaPhase === "source-missing"
+            ? (isAr ? "المصدر غير متاح" : "Source unavailable")
+            : (isAr ? "غير متاح" : "Unavailable");
+  const theiaDetail = theiaStatusQuery.data?.detail ?? (isAr ? "تُراجع حالة مصدر Theia المضمّن." : "Reviewing the embedded Theia source state.");
+  const theiaVersion = theiaSourceQuery.data?.version ? `v${theiaSourceQuery.data.version}` : undefined;
   const lines = [
     ["import", " { createClient } ", "from", " './client';"],
     ["import", " { sessionStore } ", "from", " '../stores/session';"],
@@ -568,7 +594,7 @@ function Programming({ lang }: { lang: Language }) {
     <div className="programming-view workspace-view">
       <div className="workspace-toolbar">
         <div className="toolbar-tabs"><button className="active-tab"><FileCode2 size={15} /> auth.service.ts <X size={13} /></button><button><FileCode2 size={15} /> routes.ts <X size={13} /></button><button className="toolbar-add"><Plus size={15} /></button></div>
-        <div className="toolbar-controls"><button><Play size={14} /> {isAr ? "تشغيل" : "Run"}</button><button><MoreHorizontal size={17} /></button></div>
+        <div className="toolbar-controls"><button className="theia-state-control" onClick={() => void theiaStatusQuery.refetch()} disabled={theiaStatusQuery.isFetching} title={theiaDetail}><Signal tone={theiaTone} pulse={theiaStatusQuery.isFetching || theiaPhase === "running"} /> Theia · {theiaLabel}</button><button><Play size={14} /> {isAr ? "تشغيل" : "Run"}</button><button><MoreHorizontal size={17} /></button></div>
       </div>
       <div className="programming-grid">
         <aside className="project-explorer glass-panel">
@@ -590,6 +616,14 @@ function Programming({ lang }: { lang: Language }) {
           <div className="explorer-footer"><button><Search size={14} /> {isAr ? "بحث في الملفات" : "Search files"}</button><button><Bot size={14} /> {isAr ? "سياق الوكيل" : "Agent context"}</button></div>
         </aside>
         <section className="code-stage glass-panel">
+          <div className={`theia-runtime-card theia-${theiaPhase ?? "checking"}`} role="status" aria-live="polite">
+            <div className="theia-runtime-copy">
+              <span><Signal tone={theiaTone} pulse={theiaStatusQuery.isFetching} /> {isAr ? "محرك مساحة البرمجة" : "Programming workspace engine"}</span>
+              <strong>Eclipse Theia {theiaVersion ? `· ${theiaVersion}` : ""}</strong>
+              <p>{theiaDetail}</p>
+            </div>
+            <button onClick={() => void theiaStatusQuery.refetch()} disabled={theiaStatusQuery.isFetching}>{isAr ? "فحص الحالة" : "Refresh status"}</button>
+          </div>
           <div className="breadcrumb"><Folder size={13} /> src <ChevronRight size={12} /> services <ChevronRight size={12} /> <span>auth.service.ts</span><span className="modified-indicator">M</span></div>
           <div className="code-editor" dir="ltr">
             {lines.map((parts, index) => <div className="code-line" key={index}><span className="line-number">{index + 1}</span><code>{parts.map((part, partIndex) => <span key={partIndex} className={part === "import" || part === "from" || part === "export" || part === "function" || part === "const" || part === "try" || part === "catch" || part === "throw" || part === "await" || part === "return" ? "token-keyword" : part.includes("Authentication") ? "token-type" : part.includes("'") ? "token-string" : ""}>{part}</span>)}</code></div>)}

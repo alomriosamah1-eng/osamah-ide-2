@@ -1,0 +1,28 @@
+{
+  "component": "Eclipse Theia",
+  "vendorPath": "third_party/theia",
+  "upstreamRepository": "https://github.com/eclipse-theia/theia.git",
+  "upstreamCommit": "a35c2a27e7d62cc83409f5996cbb076adc61d667",
+  "upstreamApplicationVersion": "1.74.0",
+  "licenses": [
+    "EPL-2.0",
+    "GPL-2.0-only WITH Classpath-exception-2.0"
+  ],
+  "snapshotPolicy": {
+    "sourceIsUnmodified": true,
+    "excludedDirectories": [
+      ".git",
+      "node_modules"
+    ],
+    "approximateFileCount": 4253,
+    "approximateSize": "55 MB",
+    "adaptersLiveOutsideVendorDirectory": true
+  },
+  "integrationPolicy": {
+    "runtimeRole": "browser IDE framework for the Osamah programming workspace",
+    "aiProviderAssumptions": "none",
+    "modelFallbacks": "forbidden",
+    "providerSecrets": "server or runtime only; never browser storage"
+  },
+  "capturedAt": "2026-08-25"
+}
