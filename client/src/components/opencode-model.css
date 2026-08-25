@@ -1,5 +1,12 @@
 /* Quiet Intelligence Observatory — contextual OpenCode model preference control. */
 .opencode-model-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 8px 0 9px; padding: 7px 8px; border: 1px solid rgba(130,158,224,.14); border-radius: 9px; background: linear-gradient(90deg, rgba(94,140,255,.09), rgba(94,140,255,.025)); }
+.opencode-runtime-card { display: grid; grid-template-columns: auto 1fr; gap: 3px 7px; margin: 9px 0 0; padding: 7px 8px; border: 1px solid rgba(130,158,224,.14); border-radius: 9px; background: rgba(7,12,24,.24); }
+.opencode-runtime-card > span { display: inline-flex; grid-column: 1 / -1; align-items: center; gap: 5px; color: #93a7d9; font: 7px "JetBrains Mono", monospace; letter-spacing: .07em; text-transform: uppercase; }
+.opencode-runtime-card strong { color: #cbd9fc; font-size: 9px; font-weight: 600; }
+.opencode-runtime-card small { grid-column: 1 / -1; color: #8190ad; font-size: 8px; line-height: 1.45; }
+.opencode-runtime-card.runtime-unconfigured { border-color: rgba(218,170,84,.2); background: linear-gradient(90deg, rgba(218,170,84,.08), rgba(218,170,84,.02)); }
+.opencode-runtime-card.runtime-degraded, .opencode-runtime-card.runtime-offline { border-color: rgba(214,105,105,.2); }
+.opencode-runtime-card.runtime-ready { border-color: rgba(92,202,155,.22); }
 .opencode-model-copy { display: grid; gap: 2px; min-width: 0; }
 .opencode-model-copy > span { display: inline-flex; align-items: center; gap: 5px; color: #b4c8fb; font: 8px "JetBrains Mono", monospace; letter-spacing: .08em; }
 .opencode-model-copy small { color: var(--faint); font-size: 8px; }
@@ -14,12 +21,16 @@
 .message-model-tag { display: inline-flex; width: fit-content; margin-top: 5px; padding: 2px 5px; border: 1px solid rgba(117,157,255,.19); border-radius: 4px; background: rgba(94,140,255,.08); color: #8eaeff; font: 7px "JetBrains Mono", monospace; letter-spacing: .025em; }
 .agent-message p { white-space: pre-line; }
 .lang-ar .opencode-model-row { direction: rtl; }
+.lang-ar .opencode-runtime-card { direction: rtl; text-align: right; }
 .lang-ar .opencode-model-copy { text-align: right; }
 .lang-ar .opencode-model-option-copy { text-align: right; }
 .lang-ar .opencode-model-content { text-align: right; }
 .lang-ar .opencode-model-option { padding: 7px 9px 7px 29px !important; }
 .lang-ar .message-model-tag { align-self: flex-start; }
 :root:not(.dark) .opencode-model-row { border-color: rgba(69,101,167,.16); background: linear-gradient(90deg, rgba(94,140,255,.1), rgba(94,140,255,.025)); }
+:root:not(.dark) .opencode-runtime-card { border-color: rgba(69,101,167,.16); background: rgba(255,255,255,.54); }
+:root:not(.dark) .opencode-runtime-card strong { color: #304b80; }
+:root:not(.dark) .opencode-runtime-card small { color: #637594; }
 :root:not(.dark) .opencode-model-copy > span { color: #355fae; }
 :root:not(.dark) .opencode-model-trigger { background: rgba(255,255,255,.78) !important; color: #314a7c !important; }
 :root:not(.dark) .opencode-model-content { background: #fbfcff !important; box-shadow: 0 16px 34px rgba(43,64,111,.18) !important; }

@@ -216,6 +216,33 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     () => getOpenCodeModel(modelCatalog, selectedModelValue),
     [modelCatalog, selectedModelValue],
   );
+  const runtimeState = {
+    unconfigured: {
+      label: isAr ? "المحرك المحلي غير مهيأ" : "Local runtime not configured",
+      detail: isAr ? "الاختيار محفوظ كتفضيل فقط إلى أن تُجهز بوابة OpenCode المحلية." : "The selection is retained as a preference until the local OpenCode gateway is configured.",
+      tone: "amber" as const,
+    },
+    checking: {
+      label: isAr ? "يتم فحص المحرك المحلي" : "Checking local runtime",
+      detail: isAr ? "بانتظار نتيجة صحة موثقة من OpenCode." : "Awaiting a verified health result from OpenCode.",
+      tone: "blue" as const,
+    },
+    ready: {
+      label: isAr ? "محرك OpenCode جاهز" : "OpenCode runtime ready",
+      detail: isAr ? "تظل الرسائل معلقة حتى توصيل بوابة التنفيذ الفعلية." : "Messages remain queued until the execution gateway is connected.",
+      tone: "green" as const,
+    },
+    degraded: {
+      label: isAr ? "المحرك يحتاج مراجعة" : "Runtime needs attention",
+      detail: isAr ? "لا يُرسل أي طلب حتى تعود الصحة والنماذج الفعلية." : "No request is sent until health and real models recover.",
+      tone: "coral" as const,
+    },
+    offline: {
+      label: isAr ? "محرك OpenCode غير متاح" : "OpenCode runtime offline",
+      detail: isAr ? "احتفظت الواجهة بتفضيلك محلياً ولم تُرسل الرسالة." : "The interface retained your preference locally and did not send the message.",
+      tone: "slate" as const,
+    },
+  }[modelCatalog.runtime];
   const labels = {
     dashboard: isAr ? "ملخص المهام الموحدة" : "Unified task brief",
     programming: isAr ? "تنفيذ نظام المصادقة" : "Implement authentication system",
@@ -262,12 +289,12 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     if (!message) return;
     const envelope = createOpenCodeChatEnvelope({ message, workspace, language: lang, model: selectedModel });
     const modelNotice = isAr
-      ? `تفضيل OpenCode الحالي: ${selectedModel.label.ar}. سيتم تمرير ${envelope.model.providerId}/${envelope.model.modelId} إلى المحرك المحلي عند تهيئته.`
-      : `Current OpenCode preference: ${selectedModel.label.en}. ${envelope.model.providerId}/${envelope.model.modelId} will be sent to the local engine when ready.`;
+      ? `لم تُرسل رسالتك إلى نموذج بعد. حُفظت محلياً مع تفضيل ${selectedModel.label.ar} (${envelope.model.providerId}/${envelope.model.modelId}) بانتظار بوابة OpenCode الفعلية.`
+      : `Your message was not sent to a model yet. It was retained locally with ${selectedModel.label.en} (${envelope.model.providerId}/${envelope.model.modelId}) while the real OpenCode gateway is pending.`;
     setMessages((current) => [
       ...current,
       { role: "user", text: message, model: selectedModel.label[lang] },
-      { role: "agent", text: `${chatReply[workspace]}\n\n${modelNotice}`, model: selectedModel.label[lang] },
+      { role: "agent", text: modelNotice, model: runtimeState.label },
     ]);
     setDraft("");
   };
@@ -329,6 +356,11 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
 
       <div className="ai-composer">
         <textarea rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendMessage(); } }} placeholder={isAr ? "اطلب من ذكاء أسامة…" : "Ask Osamah AI…"} aria-label={isAr ? "رسالة للمساعد" : "Message the assistant"} />
+        <div className={`opencode-runtime-card runtime-${modelCatalog.runtime}`} role="status" aria-live="polite">
+          <span><Signal tone={runtimeState.tone} pulse={modelCatalog.runtime === "checking"} /> OpenCode runtime</span>
+          <strong>{runtimeState.label}</strong>
+          <small>{runtimeState.detail}</small>
+        </div>
         <div className="opencode-model-row">
           <div className="opencode-model-copy">
             <span><Signal tone="blue" pulse /> OpenCode</span>
