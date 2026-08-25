@@ -198,6 +198,8 @@ function TaskRow({
 
 function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Workspace; lang: Language; collapsed: boolean; onCollapse: () => void }) {
   const isAr = lang === "ar";
+  const [draft, setDraft] = useState("");
+  const [messages, setMessages] = useState<Array<{ role: "agent" | "user"; text: string }>>([]);
   const labels = {
     dashboard: isAr ? "ملخص المهام الموحدة" : "Unified task brief",
     programming: isAr ? "تنفيذ نظام المصادقة" : "Implement authentication system",
@@ -211,6 +213,39 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     presentations: isAr ? ["تم فهم الموضوع", "تم إنشاء الهيكل", "يجري تصميم الشريحة 4"] : ["Understanding topic", "Built presentation structure", "Designing slide 4"],
     mind: isAr ? ["تمت فهرسة 12 مستنداً", "تم ربط 4 مفاهيم", "يجري تحليل البحث"] : ["Indexed 12 documents", "Connected 4 related concepts", "Analyzing research"],
     settings: isAr ? ["تمت مراجعة النماذج", "الصلاحيات آمنة", "اقتراح تحسينات"] : ["Models reviewed", "Permissions secure", "Suggesting refinements"],
+  };
+  const chatSeed = {
+    dashboard: isAr ? "لديّ سياق متصل عبر مساحات عملك. ما الخطوة التي تريد تشغيلها أولاً؟" : "I have connected context across your workspaces. What would you like to move forward first?",
+    programming: isAr ? "تحققت من auth.service.ts. يمكنني الآن معالجة انتهاء الجلسة أو كتابة اختبارات التكامل." : "I reviewed auth.service.ts. I can handle session expiry or write the integration tests next.",
+    presentations: isAr ? "تستند الشريحة 4 إلى سياق البحث الحالي. يمكنني صياغة القصة أو تحسين المقاييس." : "Slide 4 is grounded in the current research context. I can refine its story or strengthen the metrics.",
+    mind: isAr ? "ربطت مصادر البحث الرئيسية. هل أستخرج الرؤى القابلة للاستخدام في عرض المستثمرين؟" : "I connected the key research sources. Should I extract insights ready for the investor deck?",
+    settings: isAr ? "إعدادات مساحة العمل مستقرة. أستطيع اقتراح تهيئة أنسب لنمط عملك." : "Your workspace settings are stable. I can suggest a configuration that better fits how you work.",
+  };
+  const chatPrompts = {
+    dashboard: isAr ? ["رتّب أولوياتي", "أنشئ خطة اليوم"] : ["Prioritize my work", "Create today’s plan"],
+    programming: isAr ? ["اشرح التعديل", "أضف الاختبارات"] : ["Explain this change", "Add the tests"],
+    presentations: isAr ? ["حسّن القصة", "اقترح شريحة"] : ["Strengthen the story", "Suggest a slide"],
+    mind: isAr ? ["استخرج الرؤى", "اربط المصادر"] : ["Extract insights", "Connect sources"],
+    settings: isAr ? ["اقترح تهيئة", "راجع الإعدادات"] : ["Suggest a setup", "Review settings"],
+  };
+  const chatReply = {
+    dashboard: isAr ? "سأرتب العمل حسب أثره على عرض المستثمرين وأضع الخطوة التالية في الطابور." : "I’ll prioritize the work by its impact on the investor deck and queue the next action.",
+    programming: isAr ? "سأجهز تعديلاً قابلاً للمراجعة وأعرض الاختبارات المتأثرة قبل تطبيقه." : "I’ll prepare a reviewable change and show the affected tests before applying it.",
+    presentations: isAr ? "سأستخدم البحث المتصل لتحويل هذه النقطة إلى قصة أوضح قابلة للعرض." : "I’ll use the connected research to turn this into a clearer, presentation-ready story.",
+    mind: isAr ? "سأجمع الأدلة ذات الصلة في ملخص قصير مع الروابط التي تدعمه." : "I’ll collect the relevant evidence into a concise synthesis with the links that support it.",
+    settings: isAr ? "سأقارن الإعداد الحالي بنمط عملك وأقترح التعديل الأقل إزعاجاً." : "I’ll compare the current setup against your workflow and suggest the least disruptive adjustment.",
+  };
+
+  useEffect(() => {
+    setDraft("");
+    setMessages([{ role: "agent", text: chatSeed[workspace] }]);
+  }, [workspace, lang]);
+
+  const sendMessage = (text = draft) => {
+    const message = text.trim();
+    if (!message) return;
+    setMessages((current) => [...current, { role: "user", text: message }, { role: "agent", text: chatReply[workspace] }]);
+    setDraft("");
   };
 
   if (collapsed) {
@@ -260,11 +295,19 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
         <TaskRow title={isAr ? "تحديث التبعيات" : "Update dependencies"} detail={isAr ? "تمت بنجاح" : "Completed"} state="done" />
       </div>
 
+      <div className="agent-conversation" aria-label={isAr ? "دردشة وكيل مساحة العمل" : "Workspace agent chat"}>
+        <SectionLabel action={<span className="agent-context-status"><Signal tone="blue" pulse /> {isAr ? "سياق حي" : "Live context"}</span>}>{isAr ? "دردشة الوكيل" : "Agent chat"}</SectionLabel>
+        <div className="agent-messages">
+          {messages.slice(-3).map((message, index) => <div className={`agent-message message-${message.role}`} key={`${message.role}-${index}-${message.text}`}><span>{message.role === "agent" ? "OS" : isAr ? "أنت" : "You"}</span><p>{message.text}</p></div>)}
+        </div>
+        <div className="agent-prompt-row">{chatPrompts[workspace].map((prompt) => <button key={prompt} onClick={() => sendMessage(prompt)}>{prompt}</button>)}</div>
+      </div>
+
       <div className="ai-composer">
-        <textarea rows={2} placeholder={isAr ? "اطلب من ذكاء أسامة…" : "Ask Osamah AI…"} aria-label={isAr ? "رسالة للمساعد" : "Message the assistant"} />
+        <textarea rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendMessage(); } }} placeholder={isAr ? "اطلب من ذكاء أسامة…" : "Ask Osamah AI…"} aria-label={isAr ? "رسالة للمساعد" : "Message the assistant"} />
         <div className="composer-foot">
-          <span><Command size={12} /> {isAr ? "أمر" : "Command"}</span>
-          <button aria-label={isAr ? "إرسال" : "Send"}><Send size={15} /></button>
+          <span><Command size={12} /> {isAr ? "مرتبط بـ" : "Grounded in"} {labels[workspace]}</span>
+          <button onClick={() => sendMessage()} aria-label={isAr ? "إرسال" : "Send"}><Send size={15} /></button>
         </div>
       </div>
     </aside>
@@ -420,7 +463,27 @@ function Programming({ lang }: { lang: Language }) {
 
 function Presentations({ lang }: { lang: Language }) {
   const isAr = lang === "ar";
-  const slides = isAr ? ["الغلاف", "المشكلة", "الحل", "السوق", "نموذج العمل", "الاستراتيجية", "الخلاصة"] : ["Cover", "Problem", "Solution", "Market", "Business model", "Strategy", "Conclusion"];
+  const [selectedSlide, setSelectedSlide] = useState(3);
+  const slides = isAr
+    ? [
+      { title: "الغلاف", kicker: "COFFEE EXPORTS / 2026", headline: "قهوة يمنية، فرصة عالمية", detail: "عرض استثماري يرتكز على التاريخ والندرة والنمو المتسارع في القهوة المتخصصة.", metric: "$24M", metricLabel: "قيمة تصدير محتملة", signal: "+18%", signalLabel: "نمو سنوي", note: "ابدأ بالقصة: أصل نادر، طلب متزايد، وفرصة لبناء علامة ذات قيمة." },
+      { title: "المشكلة", kicker: "MARKET GAP / 01", headline: "قصة مميزة لم تُترجم إلى قيمة", detail: "يفتقد المنتج مساراً متسقاً من المنشأ إلى السوق المتخصصة العالمي.", metric: "3×", metricLabel: "فرق القيمة", signal: "41%", signalLabel: "فجوة الجودة", note: "اربط التحدي بتأثيره على المزارع والمشتري النهائي دون الإطالة." },
+      { title: "الحل", kicker: "VALUE SYSTEM / 02", headline: "سلسلة قيمة يمكن تتبعها", detail: "نموذج يربط المنتجين والفرز والقصص والبيع المباشر في سياق واحد.", metric: "12", metricLabel: "شريكاً محلياً", signal: "100%", signalLabel: "قابل للتتبع", note: "أبرز كيف يحول النظام المصدر إلى ميزة تنافسية قابلة للقياس." },
+      { title: "السوق", kicker: "COFFEE EXPORTS / 2026", headline: "فرصة القهوة اليمنية", detail: "بناء حضور مميز في سوق القهوة المتخصصة العالمي.", metric: "$24M", metricLabel: "قيمة تصدير محتملة", signal: "+18%", signalLabel: "نمو سنوي", note: "أضف قصة تقدم هذه الفرصة بوضوح وتربطها ببيانات البحث الحالية." },
+      { title: "نموذج العمل", kicker: "BUSINESS MODEL / 04", headline: "هوامش محسّنة عبر الجودة", detail: "خليط من التوريد المباشر والبيع بالجملة والشراكات مع المحامص المتخصصة.", metric: "42%", metricLabel: "هامش مستهدف", signal: "3", signalLabel: "قنوات دخل", note: "استخدم أرقاماً قليلة ومقروءة؛ اترك التفاصيل للملحق." },
+      { title: "الاستراتيجية", kicker: "GO-TO-MARKET / 05", headline: "ابدأ بالأسواق التي تقدّر المنشأ", detail: "مرحلة تجريبية مركزة مع محامص مرجعية ثم توسع محسوب حسب الطلب.", metric: "18", metricLabel: "شهراً للتوسع", signal: "2", signalLabel: "أسواق أولية", note: "بيّن تسلسل التنفيذ بوضوح: إثبات، شراكات، ثم تكرار." },
+      { title: "الخلاصة", kicker: "INVESTMENT CASE / 06", headline: "وقت مناسب لبناء الفئة", detail: "فرصة واضحة لتحويل قيمة المنشأ إلى عمل قابل للنمو.", metric: "$1.8M", metricLabel: "جولة مستهدفة", signal: "2026", signalLabel: "بداية التنفيذ", note: "اختم بطلب محدد وخطوة تالية يمكن اتخاذها اليوم." },
+    ]
+    : [
+      { title: "Cover", kicker: "COFFEE EXPORTS / 2026", headline: "Yemeni coffee, global opportunity", detail: "An investment case built on heritage, scarcity, and specialty coffee growth.", metric: "$24M", metricLabel: "Export potential", signal: "+18%", signalLabel: "Annual growth", note: "Open with the story: scarce origin, rising demand, and a value-led brand opportunity." },
+      { title: "Problem", kicker: "MARKET GAP / 01", headline: "A distinctive story not yet priced", detail: "The product lacks a consistent path from origin to the global specialty market.", metric: "3×", metricLabel: "Value gap", signal: "41%", signalLabel: "Quality gap", note: "Connect the challenge to its impact on growers and the eventual buyer without over-explaining." },
+      { title: "Solution", kicker: "VALUE SYSTEM / 02", headline: "A traceable value chain", detail: "A system that connects producers, sorting, stories, and direct selling in one context.", metric: "12", metricLabel: "Local partners", signal: "100%", signalLabel: "Traceable", note: "Show how the system turns origin into a measurable competitive advantage." },
+      { title: "Market", kicker: "COFFEE EXPORTS / 2026", headline: "Yemen’s Coffee Opportunity", detail: "Building a distinctive position in the global specialty market.", metric: "$24M", metricLabel: "Export potential", signal: "+18%", signalLabel: "Annual growth", note: "Add a narrative that frames this opportunity clearly and ties it to the current research." },
+      { title: "Business model", kicker: "BUSINESS MODEL / 04", headline: "Better margins through quality", detail: "A blend of direct sourcing, wholesale, and specialty-roaster partnerships.", metric: "42%", metricLabel: "Target margin", signal: "3", signalLabel: "Revenue channels", note: "Use a small number of legible metrics and leave detailed assumptions for the appendix." },
+      { title: "Strategy", kicker: "GO-TO-MARKET / 05", headline: "Start where origin is valued", detail: "A focused pilot with reference roasters, then measured expansion with demand.", metric: "18", metricLabel: "Months to scale", signal: "2", signalLabel: "Initial markets", note: "Make the execution sequence explicit: prove, partner, repeat." },
+      { title: "Conclusion", kicker: "INVESTMENT CASE / 06", headline: "The right time to build the category", detail: "A clear opportunity to turn origin value into a scalable business.", metric: "$1.8M", metricLabel: "Target round", signal: "2026", signalLabel: "Execution start", note: "Close with a specific ask and a next step that can happen today." },
+    ];
+  const activeSlide = slides[selectedSlide];
   return (
     <div className="presentations-view workspace-view">
       <div className="presentation-ribbon">
@@ -432,7 +495,7 @@ function Presentations({ lang }: { lang: Language }) {
         <aside className="slide-navigator glass-panel">
           <SectionLabel action={<button><Plus size={14} /></button>}>{isAr ? "الشرائح" : "Slides"}</SectionLabel>
           <div className="slides-list">
-            {slides.map((title, index) => <button className={`slide-thumb ${index === 3 ? "slide-selected" : ""}`} key={title}><span className="slide-number">{String(index + 1).padStart(2, "0")}</span><span className={`mini-slide mini-${index}`}><i /><i /><i /></span><strong>{title}</strong></button>)}
+            {slides.map((slide, index) => <button onClick={() => setSelectedSlide(index)} className={`slide-thumb ${index === selectedSlide ? "slide-selected" : ""}`} key={slide.title}><span className="slide-number">{String(index + 1).padStart(2, "0")}</span><span className={`mini-slide mini-${index}`}><i /><i /><i /></span><strong>{slide.title}</strong></button>)}
           </div>
         </aside>
         <section className="slide-workbench">
@@ -440,14 +503,14 @@ function Presentations({ lang }: { lang: Language }) {
           <div className="slide-canvas-wrap">
             <div className="slide-canvas">
               <div className="slide-canvas-decoration"><span /><span /><span /></div>
-              <p className="canvas-kicker">COFFEE EXPORTS / 2026</p>
-              <h2>{isAr ? "فرصة القهوة اليمنية" : "Yemen’s Coffee Opportunity"}</h2>
-              <p>{isAr ? "بناء حضور مميز في سوق القهوة المتخصصة العالمي." : "Building a distinctive position in the global specialty market."}</p>
-              <div className="canvas-stats"><span><b>$24M</b><small>{isAr ? "قيمة تصدير محتملة" : "Export potential"}</small></span><span><b>+18%</b><small>{isAr ? "نمو سنوي" : "Annual growth"}</small></span></div>
+              <p className="canvas-kicker">{activeSlide.kicker}</p>
+              <h2>{activeSlide.headline}</h2>
+              <p>{activeSlide.detail}</p>
+              <div className="canvas-stats"><span><b>{activeSlide.metric}</b><small>{activeSlide.metricLabel}</small></span><span><b>{activeSlide.signal}</b><small>{activeSlide.signalLabel}</small></span></div>
               <div className="canvas-curve" />
             </div>
           </div>
-          <div className="speaker-notes"><button><ChevronDown size={15} /> {isAr ? "ملاحظات المتحدث" : "Speaker notes"}</button><span>{isAr ? "أضف قصة تقدم هذه الفرصة بوضوح…" : "Add a story that frames this opportunity…"}</span></div>
+          <div className="speaker-notes"><button><ChevronDown size={15} /> {isAr ? "ملاحظات المتحدث" : "Speaker notes"}</button><span>{activeSlide.note}</span></div>
         </section>
       </div>
     </div>
@@ -456,7 +519,26 @@ function Presentations({ lang }: { lang: Language }) {
 
 function SecondMind({ lang }: { lang: Language }) {
   const isAr = lang === "ar";
+  const [focusedNode, setFocusedNode] = useState("coffee");
   const sources = isAr ? ["المشاريع", "الأبحاث", "المستندات", "الأفكار", "التعلّم"] : ["Projects", "Research", "Documents", "Ideas", "Learning"];
+  const nodes = isAr
+    ? {
+      research: { label: "بحث التصدير", domain: "نتائج بحث التصدير", insight: "يربط البحث بين عودة الاهتمام بالقهوة ذات المنشأ الواضح وطلب المشترين على التتبع.", source: "بحث التصدير 2026", type: "بحث · 12 رابطاً" },
+      coffee: { label: "القهوة اليمنية", domain: "مجال البحث: القهوة اليمنية", insight: "تظهر ثلاثة مصادر متصلة أن ندرة المنشأ وسرد القصة يمكن أن يرفعا القيمة في السوق المتخصصة.", source: "ملخص السوق 2026", type: "مستند · مرتبط الآن" },
+      market: { label: "السوق العالمي", domain: "إشارات السوق العالمي", insight: "تشير مؤشرات الطلب إلى مساحة أولية مناسبة مع المحامص المتخصصة في أوروبا والخليج.", source: "خريطة الطلب العالمي", type: "تحليل · 8 روابط" },
+      deck: { label: "عرض المستثمرين", domain: "سياق عرض المستثمرين", insight: "يمكن تحويل الأدلة الحالية إلى ثلاث رسائل: المنشأ، نظام القيمة، وخطة التوسع.", source: "هيكل العرض الحالي", type: "عرض · 6 شرائح" },
+      plan: { label: "خطة العمل", domain: "سياق خطة العمل", insight: "تتصل افتراضات النمو بثلاثة شركاء محليين وبنموذج التوريد المباشر المقترح.", source: "خطة التشغيل الأولية", type: "خطة · 9 روابط" },
+      task: { label: "مهام التحقق", domain: "سياق مهام التحقق", insight: "تحتاج فرضيتان فقط إلى مصدر إضافي قبل أن تصبح مسودة الاستثمار جاهزة للمراجعة.", source: "قائمة التحقق", type: "مهام · 4 عناصر" },
+    }
+    : {
+      research: { label: "Export research", domain: "Export research findings", insight: "The research connects renewed interest in traceable origin coffee with buyer demand for provenance.", source: "Export research 2026", type: "Research · 12 links" },
+      coffee: { label: "Yemeni coffee", domain: "Research domain: Yemeni coffee", insight: "Three connected sources show how origin scarcity and a clear narrative can command value in specialty markets.", source: "Market summary 2026", type: "Document · linked now" },
+      market: { label: "Global market", domain: "Global market signals", insight: "Demand signals point to a strong initial opening with specialty roasters in Europe and the Gulf.", source: "Global demand map", type: "Analysis · 8 links" },
+      deck: { label: "Investor deck", domain: "Investor deck context", insight: "The current evidence can become three messages: origin, value system, and expansion plan.", source: "Current deck structure", type: "Presentation · 6 slides" },
+      plan: { label: "Business plan", domain: "Business plan context", insight: "Growth assumptions connect to three local partners and the proposed direct-sourcing model.", source: "Initial operating plan", type: "Plan · 9 links" },
+      task: { label: "Validation tasks", domain: "Validation task context", insight: "Only two hypotheses need another source before the investment draft is ready for review.", source: "Validation checklist", type: "Tasks · 4 items" },
+    };
+  const focused = nodes[focusedNode as keyof typeof nodes];
   return (
     <div className="mind-view workspace-view">
       <div className="mind-toolbar"><div><span className="eyebrow"><Signal tone="cyan" pulse /> {isAr ? "ذاكرة متصلة" : "Connected memory"}</span><h2>{isAr ? "قاعدة معرفة تصدير القهوة" : "Coffee Export Knowledge Base"}</h2></div><div className="mind-toolbar-actions"><button><Search size={15} /> {isAr ? "بحث ذكي" : "Smart search"}</button><button><Plus size={15} /> {isAr ? "إضافة سياق" : "Add context"}</button></div></div>
@@ -467,22 +549,22 @@ function SecondMind({ lang }: { lang: Language }) {
           <div className="knowledge-side-bottom"><span>{isAr ? "مساحة التخزين" : "Storage"}</span><strong>4.8 GB <em>/ 20 GB</em></strong><div><i /></div></div>
         </aside>
         <section className="knowledge-stage glass-panel">
-          <div className="knowledge-stage-head"><div><span>{isAr ? "خريطة العلاقة" : "Relationship map"}</span><strong>{isAr ? "مجال البحث: القهوة اليمنية" : "Research domain: Yemeni coffee"}</strong></div><button><MoreHorizontal size={17} /></button></div>
+          <div className="knowledge-stage-head"><div><span>{isAr ? "خريطة العلاقة" : "Relationship map"}</span><strong>{focused.domain}</strong></div><button><MoreHorizontal size={17} /></button></div>
           <div className="graph-field">
             <svg viewBox="0 0 760 430" preserveAspectRatio="none" aria-hidden="true"><path d="M125 130 C230 70 340 170 400 202 S590 120 654 185" /><path d="M160 320 C280 240 332 270 400 202 S535 280 610 320" /><path d="M125 130 C175 206 125 254 160 320" /><path d="M654 185 C580 236 610 270 610 320" /><path d="M400 202 C340 148 312 127 270 111" /></svg>
-            <button className="graph-node node-research"><BookOpen size={16} /><span>{isAr ? "بحث التصدير" : "Export research"}</span></button>
-            <button className="graph-node node-coffee"><Sparkles size={17} /><span>{isAr ? "القهوة اليمنية" : "Yemeni coffee"}</span></button>
-            <button className="graph-node node-market"><Globe2 size={15} /><span>{isAr ? "السوق العالمي" : "Global market"}</span></button>
-            <button className="graph-node node-deck"><Presentation size={15} /><span>{isAr ? "عرض المستثمرين" : "Investor deck"}</span></button>
-            <button className="graph-node node-plan"><FileText size={15} /><span>{isAr ? "خطة العمل" : "Business plan"}</span></button>
-            <button className="graph-node node-task"><Clock3 size={15} /><span>{isAr ? "مهام التحقق" : "Validation tasks"}</span></button>
+            <button onClick={() => setFocusedNode("research")} className={`graph-node node-research ${focusedNode === "research" ? "graph-node-active" : ""}`}><BookOpen size={16} /><span>{nodes.research.label}</span></button>
+            <button onClick={() => setFocusedNode("coffee")} className={`graph-node node-coffee ${focusedNode === "coffee" ? "graph-node-active" : ""}`}><Sparkles size={17} /><span>{nodes.coffee.label}</span></button>
+            <button onClick={() => setFocusedNode("market")} className={`graph-node node-market ${focusedNode === "market" ? "graph-node-active" : ""}`}><Globe2 size={15} /><span>{nodes.market.label}</span></button>
+            <button onClick={() => setFocusedNode("deck")} className={`graph-node node-deck ${focusedNode === "deck" ? "graph-node-active" : ""}`}><Presentation size={15} /><span>{nodes.deck.label}</span></button>
+            <button onClick={() => setFocusedNode("plan")} className={`graph-node node-plan ${focusedNode === "plan" ? "graph-node-active" : ""}`}><FileText size={15} /><span>{nodes.plan.label}</span></button>
+            <button onClick={() => setFocusedNode("task")} className={`graph-node node-task ${focusedNode === "task" ? "graph-node-active" : ""}`}><Clock3 size={15} /><span>{nodes.task.label}</span></button>
           </div>
           <div className="graph-legend"><span><i className="legend-cyan" />{isAr ? "وثيقة" : "Document"}</span><span><i className="legend-blue" />{isAr ? "فكرة مركزية" : "Core idea"}</span><span><i className="legend-violet" />{isAr ? "مشروع" : "Project"}</span></div>
         </section>
         <aside className="insight-panel glass-panel">
           <SectionLabel>{isAr ? "رؤية الذكاء الاصطناعي" : "AI insight"}</SectionLabel>
-          <p>{isAr ? "تظهر ثلاثة مصادر متصلة حول نمو الطلب على القهوة المتخصصة." : "Three connected sources point to specialty coffee demand growth."}</p>
-          <button className="insight-source"><span><FileText size={15} /></span><div><strong>{isAr ? "ملخص السوق 2026" : "Market summary 2026"}</strong><small>{isAr ? "مستند · مرتبط الآن" : "Document · linked now"}</small></div><ChevronRight size={14} /></button>
+          <p>{focused.insight}</p>
+          <button className="insight-source"><span><FileText size={15} /></span><div><strong>{focused.source}</strong><small>{focused.type}</small></div><ChevronRight size={14} /></button>
           <button className="insight-action"><Sparkles size={14} /> {isAr ? "استكشف الروابط" : "Explore connections"}</button>
           <div className="mind-visual"><img src="/manus-storage/osamah-knowledge-constellation_c14372aa.png" alt="" /></div>
         </aside>
