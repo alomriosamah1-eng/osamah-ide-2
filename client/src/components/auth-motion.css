@@ -79,3 +79,21 @@
   @keyframes authProvisionFlow { 0% { transform: translateX(0); opacity: 0; } 14%, 75% { opacity: 1; } 100% { transform: translateX(510%); opacity: 0; } }
   @keyframes authProvisionNode { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.16); } }
 }
+
+/* Authority layer — angular technical wordmark and connected workstation readiness path. */
+.auth-brand { position: relative; gap: 13px; }
+.auth-brand img { width: 38px; height: 38px; filter: drop-shadow(0 0 12px rgba(94,140,255,.7)); }
+.auth-brand strong { padding: 1px 8px 7px 0; font-size: 15px; letter-spacing: .29em; text-shadow: 0 0 12px rgba(94,140,255,.42); }
+.auth-brand strong::before { content: ""; position: absolute; width: 24px; height: 11px; inset-inline-end: -3px; top: -5px; border-top: 1px solid rgba(132,170,255,.82); border-radius: 50%; transform: rotate(-18deg); box-shadow: 0 -2px 9px rgba(94,140,255,.24); }
+.auth-brand strong::after { width: 48%; background: linear-gradient(90deg, #5e8cff, rgba(137,175,255,.38), transparent); }
+.auth-brand .auth-brand-slash { position: relative; margin-inline: .17em .22em; color: #9dbdff; text-shadow: 0 0 11px rgba(94,140,255,.85); }
+.auth-brand .auth-brand-slash::after { content: ""; position: absolute; width: 4px; height: 4px; border: 1px solid #9dbdff; border-radius: 50%; inset-inline-start: 50%; top: -7px; box-shadow: 0 0 8px rgba(94,140,255,.9); transform: translateX(-50%); }
+.auth-workstation-map { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; margin-top: 22px; padding-top: 12px; border-top: 1px solid rgba(94,140,255,.16); }
+.auth-workstation-map span { position: relative; display: inline-flex; align-items: center; gap: 5px; min-width: 0; color: #91a5cf; font: 8px "JetBrains Mono", monospace; letter-spacing: .055em; }
+.auth-workstation-map span::after { content: ""; position: absolute; height: 1px; inset-inline-start: 0; inset-inline-end: 8px; bottom: -7px; background: linear-gradient(90deg, rgba(94,140,255,.74), transparent); }
+.auth-workstation-map b { display: grid; place-items: center; width: 15px; height: 15px; border: 1px solid rgba(126,164,255,.42); border-radius: 50%; color: #b5ccff; font-size: 6px; box-shadow: 0 0 8px rgba(94,140,255,.16); }
+.provision-node.is-complete { color: #afc7ff; }
+.provision-node.is-complete i { border-color: rgba(139,177,255,.82); background: rgba(94,140,255,.22); box-shadow: 0 0 0 4px rgba(94,140,255,.07), 0 0 13px rgba(94,140,255,.34); }
+.provision-node.is-complete b { color: #d8e4ff; }
+
+@media (max-width: 720px) { .auth-brand img { width: 33px; height: 33px; } .auth-brand strong { font-size: 13px; } .auth-workstation-map { margin-top: 16px; } }

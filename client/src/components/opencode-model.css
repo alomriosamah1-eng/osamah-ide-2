@@ -7,6 +7,19 @@
 .opencode-runtime-card.runtime-unconfigured { border-color: rgba(218,170,84,.2); background: linear-gradient(90deg, rgba(218,170,84,.08), rgba(218,170,84,.02)); }
 .opencode-runtime-card.runtime-degraded, .opencode-runtime-card.runtime-offline { border-color: rgba(214,105,105,.2); }
 .opencode-runtime-card.runtime-ready { border-color: rgba(92,202,155,.22); }
+.opencode-connection-row { display: grid; gap: 5px; margin: 7px 0 8px; padding: 7px 8px; border: 1px solid rgba(130,158,224,.14); border-radius: 9px; background: rgba(10,16,30,.18); }
+.opencode-connection-copy { display: grid; gap: 2px; min-width: 0; }
+.opencode-connection-copy > span { display: inline-flex; align-items: center; gap: 5px; color: #a8c1ff; font: 7px "JetBrains Mono", monospace; letter-spacing: .07em; text-transform: uppercase; }
+.opencode-connection-copy small, .opencode-connection-feedback { color: #8190ad; font-size: 8px; line-height: 1.4; }
+.opencode-connection-controls { display: flex; align-items: center; gap: 5px; }
+.opencode-connection-controls input { width: 100%; min-width: 0; height: 26px; padding: 0 7px; border: 1px solid rgba(130,158,224,.2); border-radius: 6px; outline: none; background: rgba(6,10,19,.34); color: #d7e3ff; font: 8px "JetBrains Mono", monospace; letter-spacing: .01em; transition: border-color .18s var(--ease-out), background .18s var(--ease-out); }
+.opencode-connection-controls input::placeholder { color: #6f7f9e; }
+.opencode-connection-controls input:focus { border-color: rgba(133,168,255,.72); background: rgba(94,140,255,.08); }
+.opencode-connection-controls button { flex: 0 0 auto; height: 26px; padding: 0 8px; border: 1px solid rgba(123,159,255,.32); border-radius: 6px; background: rgba(94,140,255,.14); color: #cfe0ff; font-size: 8px; font-weight: 600; transition: transform .16s var(--ease-out), border-color .16s var(--ease-out), background .16s var(--ease-out); }
+.opencode-connection-controls button:hover:not(:disabled) { border-color: rgba(148,179,255,.7); background: rgba(94,140,255,.24); }
+.opencode-connection-controls button:active:not(:disabled) { transform: scale(.97); }
+.opencode-connection-controls button:disabled { cursor: wait; opacity: .6; }
+.opencode-connection-feedback { display: block; color: #93a7d9; }
 .opencode-model-copy { display: grid; gap: 2px; min-width: 0; }
 .opencode-model-copy > span { display: inline-flex; align-items: center; gap: 5px; color: #b4c8fb; font: 8px "JetBrains Mono", monospace; letter-spacing: .08em; }
 .opencode-model-copy small { color: var(--faint); font-size: 8px; }
@@ -22,6 +35,8 @@
 .agent-message p { white-space: pre-line; }
 .lang-ar .opencode-model-row { direction: rtl; }
 .lang-ar .opencode-runtime-card { direction: rtl; text-align: right; }
+.lang-ar .opencode-connection-row { direction: rtl; text-align: right; }
+.lang-ar .opencode-connection-controls input { direction: ltr; text-align: left; }
 .lang-ar .opencode-model-copy { text-align: right; }
 .lang-ar .opencode-model-option-copy { text-align: right; }
 .lang-ar .opencode-model-content { text-align: right; }
@@ -31,10 +46,15 @@
 :root:not(.dark) .opencode-runtime-card { border-color: rgba(69,101,167,.16); background: rgba(255,255,255,.54); }
 :root:not(.dark) .opencode-runtime-card strong { color: #304b80; }
 :root:not(.dark) .opencode-runtime-card small { color: #637594; }
+:root:not(.dark) .opencode-connection-row { border-color: rgba(69,101,167,.16); background: rgba(255,255,255,.42); }
+:root:not(.dark) .opencode-connection-copy > span { color: #355fae; }
+:root:not(.dark) .opencode-connection-copy small, :root:not(.dark) .opencode-connection-feedback { color: #637594; }
+:root:not(.dark) .opencode-connection-controls input { border-color: rgba(69,101,167,.2); background: rgba(255,255,255,.78); color: #314a7c; }
+:root:not(.dark) .opencode-connection-controls button { border-color: rgba(69,101,167,.3); background: rgba(94,140,255,.12); color: #355fae; }
 :root:not(.dark) .opencode-model-copy > span { color: #355fae; }
 :root:not(.dark) .opencode-model-trigger { background: rgba(255,255,255,.78) !important; color: #314a7c !important; }
 :root:not(.dark) .opencode-model-content { background: #fbfcff !important; box-shadow: 0 16px 34px rgba(43,64,111,.18) !important; }
 :root:not(.dark) .opencode-model-option { color: #263a64 !important; }
 :root:not(.dark) .opencode-model-option-copy small { color: #697c9c; }
 :root:not(.dark) .message-model-tag { color: #355fae; background: rgba(94,140,255,.11); }
-@media (prefers-reduced-motion: reduce) { .opencode-model-trigger, .opencode-model-option { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .opencode-model-trigger, .opencode-model-option, .opencode-connection-controls input, .opencode-connection-controls button { transition: none !important; } }

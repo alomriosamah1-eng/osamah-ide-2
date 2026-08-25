@@ -7,6 +7,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { createOpenCodeChatEnvelope, getOpenCodeModel, initialOpenCodeCatalog } from "@/lib/opencode-contract";
+import {
+  OpenCodeConnectionError,
+  discoverOpenCodeModels,
+  loadOpenCodeConnection,
+  saveOpenCodeConnection,
+} from "@/lib/opencode-client";
 import "./opencode-model.css";
 import {
   Bell,
@@ -209,9 +215,11 @@ function TaskRow({
 function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Workspace; lang: Language; collapsed: boolean; onCollapse: () => void }) {
   const isAr = lang === "ar";
   const [draft, setDraft] = useState("");
-  const [modelCatalog] = useState(initialOpenCodeCatalog);
+  const [modelCatalog, setModelCatalog] = useState(initialOpenCodeCatalog);
   const [selectedModelValue, setSelectedModelValue] = useState("");
   const [messages, setMessages] = useState<Array<{ role: "agent" | "user"; text: string; model?: string }>>([]);
+  const [connectionUrl, setConnectionUrl] = useState(() => loadOpenCodeConnection()?.baseUrl ?? "");
+  const [connectionMessage, setConnectionMessage] = useState("");
   const selectedModel = useMemo(
     () => getOpenCodeModel(modelCatalog, selectedModelValue),
     [modelCatalog, selectedModelValue],
@@ -219,17 +227,17 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   const runtimeState = {
     unconfigured: {
       label: isAr ? "OpenCode غير مهيأ" : "OpenCode not configured",
-      detail: isAr ? "لم تُكتشف أي نماذج حتى الآن. شغّل OpenCode وهيّئ مزوداً فيه لعرض القائمة." : "No models have been discovered. Start OpenCode and configure a provider there to populate this list.",
+      detail: isAr ? "لم تُكتشف نماذج مفعّلة بعد. شغّل OpenCode، ثم افحص اتصال الخادم المحلي لعرض القائمة." : "No enabled models have been discovered. Start OpenCode, then check its local server to populate this list.",
       tone: "amber" as const,
     },
     checking: {
       label: isAr ? "يتم فحص OpenCode" : "Checking OpenCode",
-      detail: isAr ? "بانتظار نتيجة صحة موثقة من OpenCode." : "Awaiting a verified health result from OpenCode.",
+      detail: isAr ? "يتم التحقق من الصحة ثم قراءة المزوّدات والنماذج من OpenCode." : "Verifying health, then reading providers and models from OpenCode.",
       tone: "blue" as const,
     },
     ready: {
       label: isAr ? "OpenCode جاهز" : "OpenCode ready",
-      detail: isAr ? "تم اكتشاف نماذج مهيأة من OpenCode. تُفعّل الرسائل عند توصيل بوابة التنفيذ." : "Configured models were discovered from OpenCode. Messages activate when the execution gateway is connected.",
+      detail: isAr ? "تم اكتشاف نماذج مفعّلة من OpenCode. سيبقى تنفيذ الرسائل متوقفاً حتى تُضاف جلسات التنفيذ والموافقات." : "Enabled models were discovered from OpenCode. Message execution remains off until session and permission handling is added.",
       tone: "green" as const,
     },
     degraded: {
@@ -279,10 +287,59 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     settings: isAr ? "سأقارن الإعداد الحالي بنمط عملك وأقترح التعديل الأقل إزعاجاً." : "I’ll compare the current setup against your workflow and suggest the least disruptive adjustment.",
   };
 
+  const inspectOpenCode = async (candidate = connectionUrl) => {
+    if (!candidate.trim()) {
+      setModelCatalog(initialOpenCodeCatalog);
+      setSelectedModelValue("");
+      setConnectionMessage(isAr ? "أدخل عنوان خادم OpenCode المحلي أولاً، مثل http://127.0.0.1:PORT." : "Enter the local OpenCode server address first, for example http://127.0.0.1:PORT.");
+      return;
+    }
+
+    setModelCatalog({ runtime: "checking", models: [] });
+    setSelectedModelValue("");
+    setConnectionMessage(isAr ? "يجري فحص خادم OpenCode المحلي…" : "Checking the local OpenCode server…");
+
+    try {
+      const discovery = await discoverOpenCodeModels(candidate);
+      saveOpenCodeConnection({ baseUrl: discovery.endpoint });
+      setConnectionUrl(discovery.endpoint);
+      setModelCatalog(discovery.catalog);
+      setConnectionMessage(
+        isAr
+          ? discovery.catalog.models.length > 0
+            ? `اكتشف OpenCode ${discovery.catalog.models.length} نموذجاً مفعّلاً عبر ${discovery.providerCount} مزوّدات.`
+            : "اتصل OpenCode بنجاح، لكن لا توجد نماذج مفعّلة في تهيئته الحالية."
+          : discovery.catalog.models.length > 0
+            ? `OpenCode discovered ${discovery.catalog.models.length} enabled model(s) across ${discovery.providerCount} provider(s).`
+            : "OpenCode responded successfully, but no enabled models are available in its current configuration.",
+      );
+    } catch (error) {
+      const connectionError = error instanceof OpenCodeConnectionError ? error : null;
+      setModelCatalog({ runtime: connectionError?.kind === "offline" ? "offline" : "degraded", models: [] });
+      setConnectionMessage(
+        connectionError?.kind === "invalid-endpoint"
+          ? isAr
+            ? "العنوان غير مقبول. استخدم أصل خادم OpenCode المحلي فقط، من دون مسار أو بيانات دخول."
+            : "The address is not allowed. Use only the local OpenCode server origin, without a path or credentials."
+          : isAr
+            ? "تعذر التحقق من OpenCode. تأكد أنه يعمل محلياً وأنه يسمح لأصل هذه الواجهة عبر CORS."
+            : "OpenCode could not be verified. Confirm it is running locally and permits this interface origin through CORS.",
+      );
+    }
+  };
+
   useEffect(() => {
     setDraft("");
     setMessages([{ role: "agent", text: chatSeed[workspace] }]);
   }, [workspace, lang]);
+
+  useEffect(() => {
+    const savedConnection = loadOpenCodeConnection();
+    if (savedConnection) {
+      setConnectionUrl(savedConnection.baseUrl);
+      void inspectOpenCode(savedConnection.baseUrl);
+    }
+  }, []);
 
   const sendMessage = (text = draft) => {
     const message = text.trim();
@@ -365,6 +422,31 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
           <strong>{runtimeState.label}</strong>
           <small>{runtimeState.detail}</small>
         </div>
+        <form
+          className="opencode-connection-row"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void inspectOpenCode();
+          }}
+        >
+          <div className="opencode-connection-copy">
+            <span><PlugZap size={11} /> {isAr ? "اتصال محلي" : "Local connection"}</span>
+            <small>{isAr ? "خادم OpenCode على جهازك — لا مفاتيح ولا نماذج محلية" : "OpenCode server on your device — no keys or local models"}</small>
+          </div>
+          <div className="opencode-connection-controls">
+            <input
+              value={connectionUrl}
+              onChange={(event) => setConnectionUrl(event.target.value)}
+              placeholder="http://127.0.0.1:PORT"
+              inputMode="url"
+              autoComplete="off"
+              spellCheck={false}
+              aria-label={isAr ? "عنوان خادم OpenCode المحلي" : "Local OpenCode server address"}
+            />
+            <button type="submit" disabled={modelCatalog.runtime === "checking"}>{isAr ? "فحص" : "Check"}</button>
+          </div>
+          {connectionMessage && <small className="opencode-connection-feedback">{connectionMessage}</small>}
+        </form>
         <div className="opencode-model-row">
           <div className="opencode-model-copy">
             <span><Signal tone="blue" pulse /> OpenCode</span>
