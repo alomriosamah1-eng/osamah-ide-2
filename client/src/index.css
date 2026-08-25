@@ -69,8 +69,8 @@ kbd { font-family: "JetBrains Mono", monospace; font-size: 9px; color: #9ca8c2; 
 .profile-button { gap: 6px; padding: 0; border: 0; background: transparent; color: #9da9bf; }
 .profile-button span { width: 29px; height: 29px; display: grid; place-items: center; border-radius: 9px; background: linear-gradient(135deg, #5e8cff, #8b69d8); color: white; font-size: 9px; font-weight: 700; box-shadow: 0 4px 14px rgba(88, 124, 240, .25); }
 
-.osamah-app { width: max(100vw, 1024px); min-width: 1024px; min-height: 100vh; display: grid; grid-template-rows: 58px minmax(0, 1fr) 27px; }
-.app-shell { width: 100%; min-width: 1024px; min-height: 0; display: grid; grid-template-columns: 192px minmax(0, 1fr) 294px; }
+.osamah-app { width: max(100vw, 1120px); min-width: 1120px; min-height: 100vh; display: grid; grid-template-rows: 58px minmax(0, 1fr) 27px; }
+.app-shell { width: 100%; min-width: 1120px; min-height: 0; display: grid; grid-template-columns: 198px minmax(580px, 1fr) minmax(342px, 370px); }
 .main-nav { min-height: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 13px 10px 12px; background: rgba(11, 14, 22, .58); border-inline-end: 1px solid var(--line); }
 .nav-items { display: grid; gap: 3px; }
 .nav-item { min-height: 36px; position: relative; display: flex; align-items: center; gap: 10px; width: 100%; padding: 0 10px; border: 1px solid transparent; background: transparent; border-radius: 7px; color: #8a94a9; text-align: start; font-size: 11px; transition: color .18s, background .18s, transform .18s; }
