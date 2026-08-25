@@ -210,7 +210,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   const isAr = lang === "ar";
   const [draft, setDraft] = useState("");
   const [modelCatalog] = useState(initialOpenCodeCatalog);
-  const [selectedModelValue, setSelectedModelValue] = useState("local/default");
+  const [selectedModelValue, setSelectedModelValue] = useState("");
   const [messages, setMessages] = useState<Array<{ role: "agent" | "user"; text: string; model?: string }>>([]);
   const selectedModel = useMemo(
     () => getOpenCodeModel(modelCatalog, selectedModelValue),
@@ -218,18 +218,18 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   );
   const runtimeState = {
     unconfigured: {
-      label: isAr ? "المحرك المحلي غير مهيأ" : "Local runtime not configured",
-      detail: isAr ? "الاختيار محفوظ كتفضيل فقط إلى أن تُجهز بوابة OpenCode المحلية." : "The selection is retained as a preference until the local OpenCode gateway is configured.",
+      label: isAr ? "OpenCode غير مهيأ" : "OpenCode not configured",
+      detail: isAr ? "لم تُكتشف أي نماذج حتى الآن. شغّل OpenCode وهيّئ مزوداً فيه لعرض القائمة." : "No models have been discovered. Start OpenCode and configure a provider there to populate this list.",
       tone: "amber" as const,
     },
     checking: {
-      label: isAr ? "يتم فحص المحرك المحلي" : "Checking local runtime",
+      label: isAr ? "يتم فحص OpenCode" : "Checking OpenCode",
       detail: isAr ? "بانتظار نتيجة صحة موثقة من OpenCode." : "Awaiting a verified health result from OpenCode.",
       tone: "blue" as const,
     },
     ready: {
-      label: isAr ? "محرك OpenCode جاهز" : "OpenCode runtime ready",
-      detail: isAr ? "تظل الرسائل معلقة حتى توصيل بوابة التنفيذ الفعلية." : "Messages remain queued until the execution gateway is connected.",
+      label: isAr ? "OpenCode جاهز" : "OpenCode ready",
+      detail: isAr ? "تم اكتشاف نماذج مهيأة من OpenCode. تُفعّل الرسائل عند توصيل بوابة التنفيذ." : "Configured models were discovered from OpenCode. Messages activate when the execution gateway is connected.",
       tone: "green" as const,
     },
     degraded: {
@@ -238,7 +238,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
       tone: "coral" as const,
     },
     offline: {
-      label: isAr ? "محرك OpenCode غير متاح" : "OpenCode runtime offline",
+      label: isAr ? "OpenCode غير متاح" : "OpenCode offline",
       detail: isAr ? "احتفظت الواجهة بتفضيلك محلياً ولم تُرسل الرسالة." : "The interface retained your preference locally and did not send the message.",
       tone: "slate" as const,
     },
@@ -289,11 +289,15 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     if (!message) return;
     const envelope = createOpenCodeChatEnvelope({ message, workspace, language: lang, model: selectedModel });
     const modelNotice = isAr
-      ? `لم تُرسل رسالتك إلى نموذج بعد. حُفظت محلياً مع تفضيل ${selectedModel.label.ar} (${envelope.model.providerId}/${envelope.model.modelId}) بانتظار بوابة OpenCode الفعلية.`
-      : `Your message was not sent to a model yet. It was retained locally with ${selectedModel.label.en} (${envelope.model.providerId}/${envelope.model.modelId}) while the real OpenCode gateway is pending.`;
+      ? selectedModel
+        ? `لم تُرسل رسالتك بعد. حُفظت مع نموذج OpenCode المكتشف ${selectedModel.label.ar} (${envelope.model?.providerId}/${envelope.model?.modelId}) بانتظار بوابة التنفيذ.`
+        : "لم تُرسل رسالتك لأن OpenCode لم يكتشف نموذجاً مهيأً بعد. شغّل OpenCode وهيّئ مزوداً أولاً."
+      : selectedModel
+        ? `Your message was not sent yet. It was retained with the discovered OpenCode model ${selectedModel.label.en} (${envelope.model?.providerId}/${envelope.model?.modelId}) while the execution gateway is pending.`
+        : "Your message was not sent because OpenCode has not discovered a configured model yet. Start OpenCode and configure a provider first.";
     setMessages((current) => [
       ...current,
-      { role: "user", text: message, model: selectedModel.label[lang] },
+      { role: "user", text: message, model: selectedModel?.label[lang] },
       { role: "agent", text: modelNotice, model: runtimeState.label },
     ]);
     setDraft("");
@@ -364,11 +368,11 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
         <div className="opencode-model-row">
           <div className="opencode-model-copy">
             <span><Signal tone="blue" pulse /> OpenCode</span>
-            <small>{isAr ? "اختيار النموذج" : "Model preference"}</small>
+            <small>{isAr ? "نماذج OpenCode المكتشفة" : "Discovered OpenCode models"}</small>
           </div>
-          <Select value={selectedModelValue} onValueChange={setSelectedModelValue}>
+          <Select value={selectedModelValue} onValueChange={setSelectedModelValue} disabled={modelCatalog.models.length === 0}>
             <SelectTrigger className="opencode-model-trigger" size="sm" aria-label={isAr ? "اختيار نموذج OpenCode" : "Choose an OpenCode model"}>
-              <SelectValue />
+              <SelectValue placeholder={isAr ? "بانتظار نماذج OpenCode" : "Waiting for OpenCode models"} />
             </SelectTrigger>
             <SelectContent className="opencode-model-content" align={isAr ? "start" : "end"} dir={isAr ? "rtl" : "ltr"}>
               {modelCatalog.models.map((model) => (
