@@ -11,6 +11,7 @@ describe("embedded OpenCode runtime", () => {
     const command = buildEmbeddedOpenCodeServeCommand();
 
     expect(command.cwd).toBe(embeddedOpenCodeRoot());
+    expect(command.binary).toMatch(/bun$/);
     expect(command.args).toEqual([
       "packages/opencode/src/index.ts",
       "serve",

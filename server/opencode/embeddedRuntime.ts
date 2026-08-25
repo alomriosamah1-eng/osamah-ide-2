@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import { constants } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
 type RuntimePhase = "source-missing" | "ready" | "running" | "unreachable" | "stopped";
@@ -59,10 +60,30 @@ export function buildEmbeddedOpenCodeServeCommand(): EmbeddedOpenCodeServeComman
   const port = endpoint().split(":").at(-1) ?? "4096";
 
   return {
-    binary: process.env.OPENCODE_BUN_PATH?.trim() || "bun",
+    binary: resolveEmbeddedBunPath(),
     args: ["packages/opencode/src/index.ts", "serve", "--hostname", "127.0.0.1", "--port", port],
     cwd: root,
   };
+}
+
+function resolveEmbeddedBunPath() {
+  const configured = process.env.OPENCODE_BUN_PATH?.trim();
+  if (configured) return configured;
+
+  const runtimeRoot = process.env.OPENCODE_BUN_ROOT?.trim() || resolve(process.env.HOME || "/home/ubuntu", ".opencode-runtime");
+  try {
+    const candidate = readdirSync(runtimeRoot, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && entry.name.startsWith("bun-"))
+      .sort((left, right) => right.name.localeCompare(left.name))
+      .map(entry => resolve(runtimeRoot, entry.name, "bun-linux-x64", "bun"))
+      .find(path => existsSync(path));
+
+    if (candidate) return candidate;
+  } catch {
+    // Bun may be supplied by the deployment image instead of the local runtime cache.
+  }
+
+  return "bun";
 }
 
 async function probeHealth() {
