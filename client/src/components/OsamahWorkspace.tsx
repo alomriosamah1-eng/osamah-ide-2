@@ -257,6 +257,15 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     () => getOpenCodeModel(modelCatalog, selectedModelValue),
     [modelCatalog, selectedModelValue],
   );
+  const isChatBusy = createSession.isPending || sendToSession.isPending;
+  const canSendMessage = Boolean(draft.trim() && selectedModel && modelCatalog.runtime === "ready" && !isChatBusy);
+  const sendAvailabilityMessage = !draft.trim()
+    ? (isAr ? "اكتب رسالة أولاً." : "Write a message first.")
+    : !selectedModel
+      ? (isAr ? "اختر نموذج OpenCode مكتشفاً أولاً." : "Choose a discovered OpenCode model first.")
+      : modelCatalog.runtime !== "ready"
+        ? (isAr ? "الإرسال متوقف إلى أن يصبح OpenCode جاهزاً." : "Sending is unavailable until OpenCode is ready.")
+        : isAr ? "إرسال الرسالة إلى جلسة OpenCode." : "Send the message to the OpenCode session.";
   const runtimeState = {
     unconfigured: {
       label: isAr ? "OpenCode غير مهيأ" : "OpenCode not configured",
@@ -410,46 +419,55 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
         <div className="agent-prompt-row">{chatPrompts[workspace].map((prompt) => <button key={prompt} disabled={createSession.isPending || sendToSession.isPending} onClick={() => void sendMessage(prompt)}>{prompt}</button>)}</div>
       </div>
 
-      <div className="ai-composer">
-        <textarea rows={2} value={draft} disabled={createSession.isPending || sendToSession.isPending} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} placeholder={isAr ? "اطلب من ذكاء أسامة…" : "Ask Osamah AI…"} aria-label={isAr ? "رسالة للمساعد" : "Message the assistant"} />
-        <div className={`opencode-runtime-card runtime-${modelCatalog.runtime}`} role="status" aria-live="polite">
-          <span><Signal tone={runtimeState.tone} pulse={modelCatalog.runtime === "checking"} /> OpenCode runtime</span>
-          <strong>{runtimeState.label}</strong>
-          <small>{runtimeState.detail}</small>
+      <form className="ai-composer" onSubmit={(event) => { event.preventDefault(); if (canSendMessage) void sendMessage(); }}>
+        <div className="composer-input-row">
+          <textarea rows={3} value={draft} disabled={isChatBusy} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); if (canSendMessage) void sendMessage(); } }} placeholder={isAr ? "اكتب رسالة إلى جلسة OpenCode…" : "Write a message for the OpenCode session…"} aria-label={isAr ? "رسالة للمساعد" : "Message the assistant"} aria-describedby="composer-send-hint" />
+          <button className="composer-send" type="submit" disabled={!canSendMessage} title={sendAvailabilityMessage} aria-label={isAr ? "إرسال الرسالة" : "Send message"}>
+            <Send size={16} aria-hidden="true" />
+            <span>{isChatBusy ? (isAr ? "جارٍ الإرسال" : "Sending") : !canSendMessage ? (isAr ? "غير متاح" : "Unavailable") : isAr ? "إرسال" : "Send"}</span>
+          </button>
         </div>
-        <div className="opencode-connection-row">
-          <div className="opencode-connection-copy">
-            <span><PlugZap size={11} /> {isAr ? "محرك مضمّن" : "Embedded runtime"}</span>
-            <small>{isAr ? "مصدر OpenCode الحقيقي داخل Osamah — لا مفاتيح ولا نماذج ثابتة" : "Real OpenCode source inside Osamah — no keys or fixed models"}</small>
+        <p className="composer-send-hint" id="composer-send-hint" role="status">{sendAvailabilityMessage}</p>
+        <div className="composer-support">
+          <div className={`opencode-runtime-card runtime-${modelCatalog.runtime}`} role="status" aria-live="polite">
+            <span><Signal tone={runtimeState.tone} pulse={modelCatalog.runtime === "checking"} /> OpenCode runtime</span>
+            <strong>{runtimeState.label}</strong>
+            <small>{runtimeState.detail}</small>
           </div>
-          <div className="opencode-connection-controls">
-            <button type="button" onClick={() => void inspectOpenCode()} disabled={modelCatalog.runtime === "checking"}>{isAr ? "فحص المحرك" : "Check runtime"}</button>
+          <div className="opencode-connection-row">
+            <div className="opencode-connection-copy">
+              <span><PlugZap size={11} /> {isAr ? "محرك مضمّن" : "Embedded runtime"}</span>
+              <small>{isAr ? "مصدر OpenCode الحقيقي داخل Osamah — لا مفاتيح ولا نماذج ثابتة" : "Real OpenCode source inside Osamah — no keys or fixed models"}</small>
+            </div>
+            <div className="opencode-connection-controls">
+              <button type="button" onClick={() => void inspectOpenCode()} disabled={modelCatalog.runtime === "checking"}>{isAr ? "فحص المحرك" : "Check runtime"}</button>
+            </div>
+            {connectionMessage && <small className="opencode-connection-feedback">{connectionMessage}</small>}
           </div>
-          {connectionMessage && <small className="opencode-connection-feedback">{connectionMessage}</small>}
-        </div>
-        <div className="opencode-model-row">
-          <div className="opencode-model-copy">
-            <span><Signal tone="blue" pulse /> OpenCode</span>
-            <small>{isAr ? "نماذج OpenCode المكتشفة" : "Discovered OpenCode models"}</small>
+          <div className="opencode-model-row">
+            <div className="opencode-model-copy">
+              <span><Signal tone="blue" pulse /> OpenCode</span>
+              <small>{isAr ? "نماذج OpenCode المكتشفة" : "Discovered OpenCode models"}</small>
+            </div>
+            <Select value={selectedModelValue} onValueChange={(value) => { activeSessionId.current = null; setPendingPermissions([]); setSelectedModelValue(value); }} disabled={modelCatalog.models.length === 0 || isChatBusy}>
+              <SelectTrigger className="opencode-model-trigger" size="sm" aria-label={isAr ? "اختيار نموذج OpenCode" : "Choose an OpenCode model"}>
+                <SelectValue placeholder={isAr ? "بانتظار نماذج OpenCode" : "Waiting for OpenCode models"} />
+              </SelectTrigger>
+              <SelectContent className="opencode-model-content" align={isAr ? "start" : "end"} dir={isAr ? "rtl" : "ltr"}>
+                {modelCatalog.models.map((model) => (
+                  <SelectItem key={model.value} value={model.value} className="opencode-model-option">
+                    <span className="opencode-model-option-copy"><strong>{model.label[lang]}</strong><small>{model.detail[lang]} · {model.providerId}/{model.modelId}</small></span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <Select value={selectedModelValue} onValueChange={(value) => { activeSessionId.current = null; setPendingPermissions([]); setSelectedModelValue(value); }} disabled={modelCatalog.models.length === 0 || createSession.isPending || sendToSession.isPending}>
-            <SelectTrigger className="opencode-model-trigger" size="sm" aria-label={isAr ? "اختيار نموذج OpenCode" : "Choose an OpenCode model"}>
-              <SelectValue placeholder={isAr ? "بانتظار نماذج OpenCode" : "Waiting for OpenCode models"} />
-            </SelectTrigger>
-            <SelectContent className="opencode-model-content" align={isAr ? "start" : "end"} dir={isAr ? "rtl" : "ltr"}>
-              {modelCatalog.models.map((model) => (
-                <SelectItem key={model.value} value={model.value} className="opencode-model-option">
-                  <span className="opencode-model-option-copy"><strong>{model.label[lang]}</strong><small>{model.detail[lang]} · {model.providerId}/{model.modelId}</small></span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
         </div>
         <div className="composer-foot">
           <span><Command size={12} /> {isAr ? "سياق" : "Context"}: {t[workspace]}</span>
-          <button disabled={createSession.isPending || sendToSession.isPending || !draft.trim()} onClick={() => void sendMessage()} aria-label={isAr ? "إرسال" : "Send"}><Send size={15} /></button>
+          <span>{isAr ? "Enter للإرسال · Shift+Enter لسطر جديد" : "Enter to send · Shift+Enter for a new line"}</span>
         </div>
-      </div>
+      </form>
     </aside>
   );
 }
