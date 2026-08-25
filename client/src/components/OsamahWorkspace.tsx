@@ -5,6 +5,8 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import "./opencode-model.css";
 import {
   Bell,
   BookOpen,
@@ -47,6 +49,23 @@ import {
 type Language = "ar" | "en";
 type Workspace = "dashboard" | "programming" | "presentations" | "mind" | "settings";
 type SettingsSection = "general" | "appearance" | "workspace" | "agents" | "notifications" | "integrations" | "security";
+
+type OpenCodeModelPreference = {
+  value: string;
+  providerId: string;
+  modelId: string;
+  label: { ar: string; en: string };
+  detail: { ar: string; en: string };
+};
+
+/** OpenCode accepts providerID/modelID pairs; these are preferred routing choices pending local runtime discovery. */
+const openCodeModelPreferences: OpenCodeModelPreference[] = [
+  { value: "local/default", providerId: "local", modelId: "default", label: { ar: "تلقائي من OpenCode", en: "OpenCode automatic" }, detail: { ar: "استخدم الإعداد المحلي", en: "Use local configuration" } },
+  { value: "anthropic/claude", providerId: "anthropic", modelId: "claude", label: { ar: "Anthropic · Claude", en: "Anthropic · Claude" }, detail: { ar: "للمهام التحليلية المعقدة", en: "For complex reasoning" } },
+  { value: "openai/gpt", providerId: "openai", modelId: "gpt", label: { ar: "OpenAI · GPT", en: "OpenAI · GPT" }, detail: { ar: "للتنفيذ والمراجعة", en: "For execution and review" } },
+  { value: "google/gemini", providerId: "google", modelId: "gemini", label: { ar: "Google · Gemini", en: "Google · Gemini" }, detail: { ar: "للسياق والوسائط", en: "For context and media" } },
+  { value: "openrouter/auto", providerId: "openrouter", modelId: "auto", label: { ar: "OpenRouter · تلقائي", en: "OpenRouter · automatic" }, detail: { ar: "يوجه عبر مزودك المهيأ", en: "Routes through your configured provider" } },
+];
 
 const content = {
   en: {
@@ -206,7 +225,12 @@ function TaskRow({
 function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Workspace; lang: Language; collapsed: boolean; onCollapse: () => void }) {
   const isAr = lang === "ar";
   const [draft, setDraft] = useState("");
-  const [messages, setMessages] = useState<Array<{ role: "agent" | "user"; text: string }>>([]);
+  const [selectedModelValue, setSelectedModelValue] = useState("local/default");
+  const [messages, setMessages] = useState<Array<{ role: "agent" | "user"; text: string; model?: string }>>([]);
+  const selectedModel = useMemo(
+    () => openCodeModelPreferences.find((model) => model.value === selectedModelValue) ?? openCodeModelPreferences[0],
+    [selectedModelValue],
+  );
   const labels = {
     dashboard: isAr ? "ملخص المهام الموحدة" : "Unified task brief",
     programming: isAr ? "تنفيذ نظام المصادقة" : "Implement authentication system",
@@ -251,7 +275,14 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   const sendMessage = (text = draft) => {
     const message = text.trim();
     if (!message) return;
-    setMessages((current) => [...current, { role: "user", text: message }, { role: "agent", text: chatReply[workspace] }]);
+    const modelNotice = isAr
+      ? `تفضيل OpenCode الحالي: ${selectedModel.label.ar}. سيُرسل هذا الاختيار إلى المحرك المحلي عند ربطه.`
+      : `Current OpenCode preference: ${selectedModel.label.en}. This selection will be sent to the local engine when connected.`;
+    setMessages((current) => [
+      ...current,
+      { role: "user", text: message, model: selectedModel.label[lang] },
+      { role: "agent", text: `${chatReply[workspace]}\n\n${modelNotice}`, model: selectedModel.label[lang] },
+    ]);
     setDraft("");
   };
 
@@ -305,13 +336,31 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
       <div className="agent-conversation" aria-label={isAr ? "دردشة وكيل مساحة العمل" : "Workspace agent chat"}>
         <SectionLabel action={<span className="agent-context-status"><Signal tone="blue" pulse /> {isAr ? "سياق حي" : "Live context"}</span>}>{isAr ? "دردشة الوكيل" : "Agent chat"}</SectionLabel>
         <div className="agent-messages">
-          {messages.slice(-3).map((message, index) => <div className={`agent-message message-${message.role}`} key={`${message.role}-${index}-${message.text}`}><span>{message.role === "agent" ? "OS" : isAr ? "أنت" : "You"}</span><p>{message.text}</p></div>)}
+          {messages.slice(-3).map((message, index) => <div className={`agent-message message-${message.role}`} key={`${message.role}-${index}-${message.text}`}><span>{message.role === "agent" ? "OS" : isAr ? "أنت" : "You"}</span>{message.model && <small className="message-model-tag">{message.model}</small>}<p>{message.text}</p></div>)}
         </div>
         <div className="agent-prompt-row">{chatPrompts[workspace].map((prompt) => <button key={prompt} onClick={() => sendMessage(prompt)}>{prompt}</button>)}</div>
       </div>
 
       <div className="ai-composer">
         <textarea rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); sendMessage(); } }} placeholder={isAr ? "اطلب من ذكاء أسامة…" : "Ask Osamah AI…"} aria-label={isAr ? "رسالة للمساعد" : "Message the assistant"} />
+        <div className="opencode-model-row">
+          <div className="opencode-model-copy">
+            <span><Signal tone="blue" pulse /> OpenCode</span>
+            <small>{isAr ? "اختيار النموذج" : "Model preference"}</small>
+          </div>
+          <Select value={selectedModelValue} onValueChange={setSelectedModelValue}>
+            <SelectTrigger className="opencode-model-trigger" size="sm" aria-label={isAr ? "اختيار نموذج OpenCode" : "Choose an OpenCode model"}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="opencode-model-content" align={isAr ? "start" : "end"} dir={isAr ? "rtl" : "ltr"}>
+              {openCodeModelPreferences.map((model) => (
+                <SelectItem key={model.value} value={model.value} className="opencode-model-option">
+                  <span className="opencode-model-option-copy"><strong>{model.label[lang]}</strong><small>{model.detail[lang]} · {model.providerId}/{model.modelId}</small></span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="composer-foot">
           <span><Command size={12} /> {isAr ? "مرتبط بـ" : "Grounded in"} {labels[workspace]}</span>
           <button onClick={() => sendMessage()} aria-label={isAr ? "إرسال" : "Send"}><Send size={15} /></button>
