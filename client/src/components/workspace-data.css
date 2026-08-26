@@ -31,7 +31,8 @@
   font-size: 0.74rem;
 }
 
-.project-create-form {
+.project-create-form,
+.project-edit-form {
   display: grid;
   gap: 0.55rem;
   border-block-end: 1px solid color-mix(in srgb, currentColor 9%, transparent);
@@ -39,7 +40,8 @@
   padding: 0.65rem;
 }
 
-.project-create-form label {
+.project-create-form label,
+.project-edit-form label {
   display: grid;
   gap: 0.3rem;
   color: var(--muted-foreground, #8fa0bf);
@@ -47,7 +49,9 @@
 }
 
 .project-create-form input,
-.project-create-form textarea {
+.project-create-form textarea,
+.project-edit-form input,
+.project-edit-form textarea {
   box-sizing: border-box;
   min-inline-size: 0;
   inline-size: 100%;
@@ -61,7 +65,8 @@
   padding: 0.52rem 0.6rem;
 }
 
-.project-create-form textarea {
+.project-create-form textarea,
+.project-edit-form textarea {
   min-block-size: 5.1rem;
   line-height: 1.5;
   resize: vertical;
@@ -69,25 +74,32 @@
 
 .project-create-form input:focus-visible,
 .project-create-form textarea:focus-visible,
-.project-create-actions button:focus-visible {
+.project-edit-form input:focus-visible,
+.project-edit-form textarea:focus-visible,
+.project-create-actions button:focus-visible,
+.project-edit-actions button:focus-visible {
   outline: 2px solid color-mix(in srgb, #7ba1ff 68%, transparent);
   outline-offset: 2px;
 }
 
 .project-create-form input:focus-visible,
-.project-create-form textarea:focus-visible {
+.project-create-form textarea:focus-visible,
+.project-edit-form input:focus-visible,
+.project-edit-form textarea:focus-visible {
   border-color: color-mix(in srgb, #7ba1ff 76%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, #5e8cff 22%, transparent);
 }
 
-.project-create-actions {
+.project-create-actions,
+.project-edit-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.35rem;
 }
 
-.project-create-actions button {
+.project-create-actions button,
+.project-edit-actions button {
   border: 1px solid color-mix(in srgb, #7ba1ff 42%, transparent);
   border-radius: 0.48rem;
   background: transparent;
@@ -98,20 +110,26 @@
   transition: transform 160ms var(--ease-out, ease-out), background 160ms var(--ease-out, ease-out);
 }
 
-.project-create-actions button[type="submit"] {
+.project-create-actions button[type="submit"],
+.project-edit-actions button[type="submit"] {
   border-color: color-mix(in srgb, #7ba1ff 58%, transparent);
   background: color-mix(in srgb, #5e8cff 26%, transparent);
   color: #dce7ff;
 }
 
-.project-create-actions button:not(:disabled):active { transform: scale(0.97); }
+.project-create-actions button:not(:disabled):active,
+.project-edit-actions button:not(:disabled):active { transform: scale(0.97); }
 .project-create-form input:disabled,
 .project-create-form textarea:disabled,
-.project-create-actions button:disabled { cursor: not-allowed; opacity: 0.5; }
+.project-edit-form input:disabled,
+.project-edit-form textarea:disabled,
+.project-create-actions button:disabled,
+.project-edit-actions button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .project-create-form { animation: project-create-form-enter 180ms var(--ease-out, ease-out) both; }
-  @keyframes project-create-form-enter {
+  .project-create-form,
+  .project-edit-form { animation: project-metadata-form-enter 180ms var(--ease-out, ease-out) both; }
+  @keyframes project-metadata-form-enter {
     from { opacity: 0; transform: translateY(-0.25rem); }
     to { opacity: 1; transform: translateY(0); }
   }

@@ -21,6 +21,7 @@ import { canSaveWorkspaceTaskDueDate, formatWorkspaceTaskDueDate, getWorkspaceTa
 import { canSaveWorkspaceTaskDescription } from "@/lib/workspace-task-description";
 import { canSaveWorkspaceTaskProject, parseWorkspaceTaskProjectId } from "@/lib/workspace-task-project";
 import { getWorkspaceProjectCreatePayload } from "@/lib/workspace-project-create";
+import { getWorkspaceProjectUpdatePayload } from "@/lib/workspace-project-update";
 import ServerSettingsView, { type PreferencePatch, type SavedPreferences } from "@/components/ServerSettingsView";
 import PresentationStudio from "@/components/PresentationStudio";
 import "./opencode-model.css";
@@ -979,6 +980,10 @@ function Programming({ lang }: { lang: Language }) {
   const [projectNameDraft, setProjectNameDraft] = useState("");
   const [projectLanguageDraft, setProjectLanguageDraft] = useState("TypeScript");
   const [projectDescriptionDraft, setProjectDescriptionDraft] = useState("");
+  const [isProjectEditFormOpen, setIsProjectEditFormOpen] = useState(false);
+  const [projectEditNameDraft, setProjectEditNameDraft] = useState("");
+  const [projectEditLanguageDraft, setProjectEditLanguageDraft] = useState("");
+  const [projectEditDescriptionDraft, setProjectEditDescriptionDraft] = useState("");
   const [operationError, setOperationError] = useState<string | null>(null);
   const theiaStatusQuery = trpc.theia.status.useQuery(undefined, { retry: false });
   const theiaSourceQuery = trpc.theia.source.useQuery(undefined, { retry: false });
@@ -1007,7 +1012,18 @@ function Programming({ lang }: { lang: Language }) {
     },
     onError: showFailure,
   });
-  const renameProject = trpc.workspace.project.update.useMutation({ onSuccess: () => refreshWorkspace(), onError: showFailure });
+  const updateProject = trpc.workspace.project.update.useMutation({
+    onSuccess: async project => {
+      setOperationError(null);
+      setProjectEditNameDraft("");
+      setProjectEditLanguageDraft("");
+      setProjectEditDescriptionDraft("");
+      setIsProjectEditFormOpen(false);
+      setSelectedProjectId(project.id);
+      await refreshWorkspace(project.id);
+    },
+    onError: showFailure,
+  });
   const removeProject = trpc.workspace.project.remove.useMutation({
     onSuccess: async () => {
       setSelectedProjectId(null);
@@ -1044,13 +1060,20 @@ function Programming({ lang }: { lang: Language }) {
   const activeProject = projects.find(project => project.id === selectedProjectId) ?? null;
   const activeFile = files.find(file => file.id === selectedFileId) ?? null;
   const hasUnsavedFileChanges = Boolean(activeFile && draftContent !== (activeFile.content ?? ""));
-  const isMutating = createProject.isPending || renameProject.isPending || removeProject.isPending || createFile.isPending || saveFile.isPending || renameFile.isPending || removeFile.isPending || createTask.isPending || updateTask.isPending || removeTask.isPending;
+  const isMutating = createProject.isPending || updateProject.isPending || removeProject.isPending || createFile.isPending || saveFile.isPending || renameFile.isPending || removeFile.isPending || createTask.isPending || updateTask.isPending || removeTask.isPending;
   const projectCreatePayload = getWorkspaceProjectCreatePayload({
     name: projectNameDraft,
     language: projectLanguageDraft,
     description: projectDescriptionDraft,
     isSubmitting: isMutating,
   });
+  const projectEditPayload = activeProject ? getWorkspaceProjectUpdatePayload({
+    initial: activeProject,
+    name: projectEditNameDraft,
+    language: projectEditLanguageDraft,
+    description: projectEditDescriptionDraft,
+    isSubmitting: isMutating,
+  }) : null;
 
   const confirmEditorTransition = (transition: UnsavedFileTransition) => {
     if (!shouldConfirmUnsavedFileTransition({ hasActiveFile: Boolean(activeFile), hasUnsavedChanges: hasUnsavedFileChanges, transition })) return true;
@@ -1088,7 +1111,7 @@ function Programming({ lang }: { lang: Language }) {
   }, [activeFile?.id, activeFile?.content]);
 
   const openProjectCreateForm = () => {
-    if (isProjectCreateFormOpen || isMutating || !confirmEditorTransition("create-project")) return;
+    if (isProjectCreateFormOpen || isProjectEditFormOpen || isMutating || !confirmEditorTransition("create-project")) return;
     setOperationError(null);
     setIsProjectCreateFormOpen(true);
   };
@@ -1104,18 +1127,32 @@ function Programming({ lang }: { lang: Language }) {
     setOperationError(null);
     createProject.mutate(projectCreatePayload);
   };
+  const openProjectEditForm = () => {
+    if (!activeProject || isProjectEditFormOpen || isProjectCreateFormOpen || isMutating) return;
+    setOperationError(null);
+    setProjectEditNameDraft(activeProject.name);
+    setProjectEditLanguageDraft(activeProject.language ?? "");
+    setProjectEditDescriptionDraft(activeProject.description ?? "");
+    setIsProjectEditFormOpen(true);
+  };
+  const cancelProjectEdit = () => {
+    if (updateProject.isPending) return;
+    setProjectEditNameDraft("");
+    setProjectEditLanguageDraft("");
+    setProjectEditDescriptionDraft("");
+    setIsProjectEditFormOpen(false);
+  };
+  const submitProjectEdit = () => {
+    if (!activeProject || !projectEditPayload) return;
+    setOperationError(null);
+    updateProject.mutate({ id: activeProject.id, ...projectEditPayload });
+  };
   const askForFile = () => {
     if (!selectedProjectId) return;
     const name = window.prompt(isAr ? "اسم الملف، مثال: app.ts" : "File name, for example: app.ts");
     if (!name?.trim()) return;
     const normalizedName = name.trim().replace(/^\/+/, "");
     createFile.mutate({ projectId: selectedProjectId, path: normalizedName, name: normalizedName.split("/").at(-1) ?? normalizedName, kind: "file", language: normalizedName.endsWith(".ts") || normalizedName.endsWith(".tsx") ? "TypeScript" : null, content: "" });
-  };
-  const askToRenameProject = () => {
-    if (!activeProject) return;
-    const name = window.prompt(isAr ? "اسم المشروع الجديد" : "New project name", activeProject.name);
-    if (!name?.trim() || name.trim() === activeProject.name) return;
-    renameProject.mutate({ id: activeProject.id, name: name.trim() });
   };
   const askToRenameFile = () => {
     if (!activeFile) return;
@@ -1163,14 +1200,14 @@ function Programming({ lang }: { lang: Language }) {
       </div>
       <div className="programming-grid">
         <aside className="project-explorer glass-panel">
-          <SectionLabel action={<button type="button" onClick={openProjectCreateForm} disabled={isMutating || isProjectCreateFormOpen} aria-label={isAr ? "مشروع جديد" : "New project"}><Plus size={15} /></button>}>{isAr ? "المستكشف" : "Explorer"}</SectionLabel>
+          <SectionLabel action={<button type="button" onClick={openProjectCreateForm} disabled={isMutating || isProjectCreateFormOpen || isProjectEditFormOpen} aria-label={isAr ? "مشروع جديد" : "New project"}><Plus size={15} /></button>}>{isAr ? "المستكشف" : "Explorer"}</SectionLabel>
           <div className="project-picker">
-            <select value={selectedProjectId ?? ""} onChange={event => selectProject(event.target.value ? Number(event.target.value) : null)} disabled={projectsQuery.isLoading || isMutating} aria-label={isAr ? "المشروع" : "Project"}>
+            <select value={selectedProjectId ?? ""} onChange={event => selectProject(event.target.value ? Number(event.target.value) : null)} disabled={projectsQuery.isLoading || isMutating || isProjectEditFormOpen} aria-label={isAr ? "المشروع" : "Project"}>
               <option value="">{projects.length === 0 ? (isAr ? "أنشئ مشروعاً للبدء" : "Create a project to begin") : (isAr ? "اختر مشروعاً" : "Select a project")}</option>
               {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
             </select>
-            <button type="button" onClick={askToRenameProject} disabled={!activeProject || isMutating} aria-label={isAr ? "إعادة تسمية المشروع" : "Rename project"}><MoreHorizontal size={14} /></button>
-            <button type="button" className="danger-icon-action" onClick={() => { if (activeProject && window.confirm(isAr ? "سيُحذف المشروع وكل ملفاته ومهامه نهائياً. هل تريد المتابعة؟" : "This will permanently delete the project, its files, and tasks. Continue?")) removeProject.mutate({ id: activeProject.id }); }} disabled={!activeProject || isMutating} aria-label={isAr ? "حذف المشروع" : "Delete project"}><Trash2 size={14} /></button>
+            <button type="button" onClick={openProjectEditForm} disabled={!activeProject || isMutating || isProjectCreateFormOpen || isProjectEditFormOpen} aria-label={isAr ? "تحرير بيانات المشروع" : "Edit project metadata"}><MoreHorizontal size={14} /></button>
+            <button type="button" className="danger-icon-action" onClick={() => { if (activeProject && window.confirm(isAr ? "سيُحذف المشروع وكل ملفاته ومهامه نهائياً. هل تريد المتابعة؟" : "This will permanently delete the project, its files, and tasks. Continue?")) removeProject.mutate({ id: activeProject.id }); }} disabled={!activeProject || isMutating || isProjectEditFormOpen} aria-label={isAr ? "حذف المشروع" : "Delete project"}><Trash2 size={14} /></button>
           </div>
           {isProjectCreateFormOpen ? <form className="project-create-form" dir={isAr ? "rtl" : "ltr"} onSubmit={(event) => { event.preventDefault(); submitProjectCreate(); }}>
             <label>
@@ -1190,12 +1227,30 @@ function Programming({ lang }: { lang: Language }) {
               <button type="submit" disabled={!projectCreatePayload}>{createProject.isPending ? (isAr ? "يُنشأ…" : "Creating…") : (isAr ? "إنشاء المشروع" : "Create project")}</button>
             </div>
           </form> : null}
+          {isProjectEditFormOpen && activeProject ? <form className="project-edit-form" dir={isAr ? "rtl" : "ltr"} onSubmit={(event) => { event.preventDefault(); submitProjectEdit(); }}>
+            <label>
+              <span>{isAr ? "اسم المشروع" : "Project name"}</span>
+              <input autoFocus required maxLength={160} value={projectEditNameDraft} onChange={event => setProjectEditNameDraft(event.target.value)} disabled={isMutating} aria-label={isAr ? "اسم المشروع" : "Project name"} />
+            </label>
+            <label>
+              <span>{isAr ? "اللغة (اختيارية)" : "Language (optional)"}</span>
+              <input maxLength={64} value={projectEditLanguageDraft} onChange={event => setProjectEditLanguageDraft(event.target.value)} disabled={isMutating} placeholder="TypeScript" aria-label={isAr ? "لغة المشروع" : "Project language"} />
+            </label>
+            <label>
+              <span>{isAr ? "الوصف (اختياري)" : "Description (optional)"}</span>
+              <textarea maxLength={100_000} value={projectEditDescriptionDraft} onChange={event => setProjectEditDescriptionDraft(event.target.value)} disabled={isMutating} placeholder={isAr ? "ما هدف هذا المشروع؟" : "What is this project for?"} aria-label={isAr ? "وصف المشروع" : "Project description"} />
+            </label>
+            <div className="project-edit-actions">
+              <button type="button" onClick={cancelProjectEdit} disabled={updateProject.isPending}>{isAr ? "إلغاء" : "Cancel"}</button>
+              <button type="submit" disabled={!projectEditPayload}>{updateProject.isPending ? (isAr ? "يُحفظ…" : "Saving…") : (isAr ? "حفظ التغييرات" : "Save changes")}</button>
+            </div>
+          </form> : null}
           <div className="file-tree">
             {filesQuery.isLoading ? <p className="workspace-data-muted">{isAr ? "يُحمّل الملفات…" : "Loading files…"}</p> : null}
             {!filesQuery.isLoading && activeProject && files.length === 0 ? <p className="workspace-data-muted">{isAr ? "لا توجد ملفات. أضف ملفاً جديداً." : "No files yet. Add a new file."}</p> : null}
             {files.map(file => <ExplorerItem key={file.id} icon={file.kind === "directory" ? <Folder size={14} /> : <FileCode2 size={14} />} label={file.path} active={file.id === selectedFileId} badge={file.id === activeFile?.id && hasUnsavedFileChanges ? "M" : undefined} onClick={() => selectFile(file.id)} />)}
           </div>
-          <div className="explorer-footer"><button type="button" onClick={askForFile} disabled={!activeProject || isMutating}><Plus size={14} /> {isAr ? "ملف جديد" : "New file"}</button><button type="button" onClick={openProjectCreateForm} disabled={isMutating || isProjectCreateFormOpen}><FolderOpen size={14} /> {isAr ? "مشروع جديد" : "New project"}</button></div>
+          <div className="explorer-footer"><button type="button" onClick={askForFile} disabled={!activeProject || isMutating || isProjectEditFormOpen}><Plus size={14} /> {isAr ? "ملف جديد" : "New file"}</button><button type="button" onClick={openProjectCreateForm} disabled={isMutating || isProjectCreateFormOpen || isProjectEditFormOpen}><FolderOpen size={14} /> {isAr ? "مشروع جديد" : "New project"}</button></div>
         </aside>
         <section className="code-stage glass-panel">
           <div className={`theia-runtime-card theia-${theiaPhase ?? "checking"}`} role="status" aria-live="polite">

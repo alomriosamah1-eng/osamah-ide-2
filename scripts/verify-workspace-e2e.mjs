@@ -175,8 +175,15 @@ try {
   });
   reassignmentProjectId = reassignmentProject.id;
 
-  const updatedProject = await client.workspace.project.update.mutate({ id: projectId, name: "E2E Workspace Renamed" });
-  if (updatedProject.name !== "E2E Workspace Renamed") throw new Error("Project rename was not persisted.");
+  const updatedProject = await client.workspace.project.update.mutate({
+    id: projectId,
+    name: "E2E Workspace Renamed",
+    language: "JavaScript",
+    description: "Updated only to verify project metadata editing.",
+  });
+  if (updatedProject.name !== "E2E Workspace Renamed" || updatedProject.language !== "JavaScript" || updatedProject.description !== "Updated only to verify project metadata editing.") {
+    throw new Error("Project metadata update was not persisted.");
+  }
 
   const file = await client.workspace.file.create.mutate({
     projectId,
@@ -213,8 +220,8 @@ try {
   ]);
   const listedProject = projects.find(item => item.id === projectId);
   if (!listedProject) throw new Error("Created project was not listed.");
-  if (listedProject.language !== "TypeScript" || listedProject.description !== "Created only to verify protected CRUD.") {
-    throw new Error("Project creation metadata was not returned by the list contract.");
+  if (listedProject.name !== "E2E Workspace Renamed" || listedProject.language !== "JavaScript" || listedProject.description !== "Updated only to verify project metadata editing.") {
+    throw new Error("Project metadata update was not returned by the list contract.");
   }
   if (!files.some(item => item.id === fileId && item.path === "src/app.ts")) throw new Error("Saved file was not listed.");
   if (!tasks.some(item => item.id === taskId && item.status === "done" && item.projectId === null)) throw new Error("Updated general task was not listed.");
