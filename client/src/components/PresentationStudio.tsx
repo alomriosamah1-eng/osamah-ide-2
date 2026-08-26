@@ -46,9 +46,33 @@ export default function PresentationStudio({ lang }: { lang: Language }) {
   const [opencodeDraft, setOpencodeDraft] = useState("");
   const [opencodeResponse, setOpencodeResponse] = useState("");
   const [opencodeBusy, setOpencodeBusy] = useState(false);
+  const [awaitingAgentResponse, setAwaitingAgentResponse] = useState(false);
   const createSession = trpc.opencode.session.create.useMutation({ onSuccess: d => setOpencodeSessionId(d.sessionID) });
   const sendToSession = trpc.opencode.session.send.useMutation({ onSuccess: () => { setOpencodeBusy(false); setOpencodeDraft(""); } });
   const msgQuery = trpc.opencode.session.messages.useQuery(opencodeSessionId ? { sessionID: opencodeSessionId } : skipToken, { enabled: Boolean(opencodeSessionId), retry: false });
+
+  const handleGenerateFromAgent = async () => {
+    const prompt = isAr
+      ? `أنشئ عرضًا تقديميًا بناءً على السياق الحالي: عرض "${selectedDeck?.title ?? ""}"، شريحة "${selectedSlide?.title ?? ""}"، المحتوى الحالي: "${selectedSlide?.content ?? ""}".`
+      : `Generate presentation content based on current context: deck "${selectedDeck?.title ?? ""}", slide "${selectedSlide?.title ?? ""}", current content: "${selectedSlide?.content ?? ""}".`;
+    setOpencodeDraft(prompt);
+    await askOpenCode();
+  };
+
+  useEffect(() => {
+    if (awaitingAgentResponse && msgQuery.data && msgQuery.data.messages) {
+      const lastMsg = msgQuery.data.messages[msgQuery.data.messages.length - 1];
+      if (lastMsg && lastMsg.role === "assistant" && lastMsg.content && typeof lastMsg.content === "string") {
+        const text = lastMsg.content.trim();
+        if (text) {
+          setDraftContent(text);
+          saveSlide();
+        }
+      }
+      setAwaitingAgentResponse(false);
+      setOpencodeBusy(false);
+    }
+  }, [msgQuery.data, awaitingAgentResponse]);
 
   const askOpenCode = async () => {
     const text = opencodeDraft.trim();
@@ -67,7 +91,9 @@ export default function PresentationStudio({ lang }: { lang: Language }) {
       }
       const contextText = `${isAr ? "العرض: " : "Deck: "}${selectedDeck?.title ?? "—"} | ${isAr ? "شريحة: " : "Slide: "}${selectedSlide?.title ?? "—"} | ${isAr ? "المحتوى: " : "Content: "}${selectedSlide?.content ?? "—"}`;
       await sendToSession.mutateAsync({ sessionID: sid, text: text + "\n" + contextText, section: "presentations" });
-      setOpencodeResponse(isAr ? "تم إرسال السياق إلى OpenCode. تحقق من الرد أدناه." : "Context sent to OpenCode. Check response below.");
+      setAwaitingAgentResponse(true);
+      setOpencodeResponse(isAr ? "جارٍ استقبال الرد من الوكيل..." : "Receiving agent response...");
+      setTimeout(() => { msgQuery.refetch(); }, 2500);
     } catch (e: any) {
       setOpencodeResponse(isAr ? "فشل الإرسال: " + (e.message ?? "") : "Send failed: " + (e.message ?? ""));
     } finally { setOpencodeBusy(false); }
@@ -141,7 +167,7 @@ export default function PresentationStudio({ lang }: { lang: Language }) {
     <div className="presentation-ribbon">
       <div className="deck-name"><Presentation size={17} /><span>{selectedDeck?.title ?? (isAr ? "العروض" : "Presentations")}</span><span className="saved-state">{isMutating ? <Loader2 size={13} className="spin" /> : <Save size={13} />} {isMutating ? (isAr ? "جارٍ الحفظ" : "Saving") : (isAr ? "محفوظ خادمياً" : "Server-saved")}</span></div>
       <div className="ribbon-menu"><button type="button" className="ribbon-active" onClick={askForDeck} disabled={isMutating}><Plus size={14} /> {isAr ? "عرض جديد" : "New deck"}</button>{selectedDeck ? <button type="button" onClick={askToRenameDeck} disabled={isMutating}>{isAr ? "إعادة تسمية" : "Rename"}</button> : null}</div>
-      <div className="ribbon-actions"><button type="button" title={generationAvailable ? undefined : (isAr ? "التقديم/التوليد غير مهيأ في Presenton." : "Presenton presentation generation is not configured.")} disabled={!generationAvailable}><Play size={14} /> {isAr ? "تقديم" : "Present"}</button>{selectedDeck ? <button type="button" className="danger-icon-action" onClick={() => { if (confirmSlideTransition("delete-deck") && window.confirm(isAr ? "حذف العرض وكل شرائحه؟" : "Delete this presentation and its slides?")) removeDeck.mutate({ id: selectedDeck.id }); }} disabled={isMutating} aria-label={isAr ? "حذف العرض" : "Delete presentation"}><Trash2 size={16} /></button> : null}</div>
+      <div className="ribbon-actions"><button type="button" onClick={handleGenerateFromAgent} title={generationAvailable ? undefined : (isAr ? "التقديم/التوليد غير مهيأ في Presenton." : "Presenton presentation generation is not configured.")} disabled={!generationAvailable}><Play size={14} /> {isAr ? "تقديم" : "Present"}</button>{selectedDeck ? <button type="button" className="danger-icon-action" onClick={() => { if (confirmSlideTransition("delete-deck") && window.confirm(isAr ? "حذف العرض وكل شرائحه؟" : "Delete this presentation and its slides?")) removeDeck.mutate({ id: selectedDeck.id }); }} disabled={isMutating} aria-label={isAr ? "حذف العرض" : "Delete presentation"}><Trash2 size={16} /></button> : null}</div>
     </div>
     <div className={`presenton-status presenton-${presentonLoadError ? "error" : (presentonStatus.data?.phase ?? "checking")}`} role="status" aria-live="polite"><span>{presentonLoadError ? <><CircleAlert size={15} /> <strong>{presentonLoadError}</strong></> : <>{isAr ? "حالة Presenton" : "Presenton status"}: <strong>{presentonStatus.data?.detail ?? (isAr ? "يُفحص الجسر الخادمي…" : "Checking server bridge…")}</strong></>}</span><button type="button" onClick={() => void presentonStatus.refetch()} disabled={presentonStatus.isFetching}><RefreshCw size={13} /> {presentonLoadError ? (isAr ? "أعد المحاولة" : "Retry") : (isAr ? "تحديث" : "Refresh")}</button></div>
     <div className="presentation-grid">
