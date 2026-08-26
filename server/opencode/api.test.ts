@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mapOpenCodeMessages, mapOpenCodeModels, mapOpenCodePermissions } from "./api";
+import { OpenCodeGatewayError, buildOpenCodeSessionRemovalPath, findDiscoveredOpenCodeModel, getOpenCodeMessagePollTimeoutMs, isOpenCodeResponsePending, mapOpenCodeMessages, mapOpenCodeModels, mapOpenCodePermissions, shouldPollOpenCodeMessages } from "./api";
 
 describe("mapOpenCodeModels", () => {
   it("keeps only real OpenCode model entries from the runtime payload", () => {
@@ -21,6 +21,40 @@ describe("mapOpenCodeModels", () => {
 });
 
 describe("OpenCode generated payload mappings", () => {
+  it("falls back to bounded message polling only for the known unavailable wait endpoint", () => {
+    expect(shouldPollOpenCodeMessages(new OpenCodeGatewayError("Session wait is not available yet", 503))).toBe(true);
+    expect(shouldPollOpenCodeMessages(new OpenCodeGatewayError("OpenCode request failed", 503))).toBe(false);
+    expect(shouldPollOpenCodeMessages(new OpenCodeGatewayError("Session wait is not available yet", 500))).toBe(false);
+  });
+
+  it("distinguishes an accepted prompt awaiting text from a gateway failure", () => {
+    const pending = new OpenCodeGatewayError("OpenCode did not return the expected assistant response before the server-side wait timeout.", 504);
+    expect(isOpenCodeResponsePending(pending)).toBe(true);
+    expect(isOpenCodeResponsePending(new OpenCodeGatewayError("OpenCode request failed", 504))).toBe(false);
+    expect(isOpenCodeResponsePending(new OpenCodeGatewayError("OpenCode did not return the expected assistant response before the server-side wait timeout.", 503))).toBe(false);
+  });
+
+  it("bounds the configured message wait while retaining a safe default", () => {
+    expect(getOpenCodeMessagePollTimeoutMs()).toBe(90_000);
+    expect(getOpenCodeMessagePollTimeoutMs("3000")).toBe(5_000);
+    expect(getOpenCodeMessagePollTimeoutMs("120000")).toBe(120_000);
+    expect(getOpenCodeMessagePollTimeoutMs("999999")).toBe(300_000);
+    expect(getOpenCodeMessagePollTimeoutMs("not-a-number")).toBe(90_000);
+  });
+
+  it("uses OpenCode's documented legacy route when deleting a v2-created session", () => {
+    expect(buildOpenCodeSessionRemovalPath("ses_abc", "/workspace/with space")).toBe("/session/ses_abc?directory=%2Fworkspace%2Fwith+space");
+  });
+
+  it("accepts a session selection only when it came from current runtime discovery", () => {
+    const discovered = mapOpenCodeModels({
+      data: [{ id: "model-a", providerID: "provider-a", name: "Model A", capabilities: { tools: true } }],
+    });
+
+    expect(findDiscoveredOpenCodeModel(discovered, { id: "model-a", providerID: "provider-a" })).toEqual(discovered[0]);
+    expect(findDiscoveredOpenCodeModel(discovered, { id: "model-a", providerID: "forged-provider" })).toBeUndefined();
+  });
+
   it("maps direct user and assistant messages while excluding non-chat events", () => {
     const messages = mapOpenCodeMessages({
       data: [

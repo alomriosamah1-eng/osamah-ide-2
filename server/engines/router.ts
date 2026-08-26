@@ -11,11 +11,13 @@ import { z } from "zod";
 import { router, protectedProcedure } from "../_core/trpc";
 import { listOpenCodeModels } from "../opencode/api";
 import { embeddedOpenCodeStatus } from "../opencode/embeddedRuntime";
+import { isOpenCodeExecutionDisabled } from "../opencode/policy";
 import { embeddedPresentonStatus } from "../presenton/embeddedRuntime";
 import { listPresentations } from "../presentations/db";
 import { listKnowledgeItems } from "../secondbrain/db";
 import { embeddedTheiaStatus } from "../theia/embeddedRuntime";
 import { listProjects, listTasks } from "../workspace/db";
+import { summarizeOwnedWorkspace } from "./agentContext";
 
 const sectionInput = z.enum(["dashboard", "programming", "presentations", "mind", "settings"]);
 /** Sections that can be represented in a server-built agent workspace prompt. */
@@ -62,7 +64,7 @@ export async function buildEngineStatus() {
   const modelCount = openCode.health === "healthy"
     ? await listOpenCodeModels().then(models => models.length).catch(() => 0)
     : 0;
-  const executionEnabled = process.env.OPENCODE_EMBEDDED_EXECUTION_ENABLED === "1";
+  const executionEnabled = !isOpenCodeExecutionDisabled();
 
   return [
     {
@@ -117,6 +119,7 @@ export async function buildAgentWorkspacePrompt(ownerId: number, section: AgentW
     listPresentations(ownerId),
   ]);
   const engineSummary = engines.map(engine => `${engine.id}=${engine.agentReady ? "ready" : engine.status}`).join(", ");
+  const workspaceMetadata = summarizeOwnedWorkspace(section, { projects, tasks, knowledgeItems, presentations });
 
   return [
     "[OSAMAH SERVER CONTEXT]",
@@ -125,6 +128,8 @@ export async function buildAgentWorkspacePrompt(ownerId: number, section: AgentW
     `Embedded engine states: ${engineSummary}.`,
     "Use only capabilities reported ready. Do not claim that an unavailable or unconfigured engine executed an action.",
     "[/OSAMAH SERVER CONTEXT]",
+    "",
+    workspaceMetadata,
     "",
     text,
   ].join("\n");

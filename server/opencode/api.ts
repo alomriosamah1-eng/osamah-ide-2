@@ -43,6 +43,18 @@ export class OpenCodeGatewayError extends Error {
   }
 }
 
+const opencodeMessagePollIntervalMs = 500;
+const defaultOpenCodeMessagePollTimeoutMs = 90_000;
+const minOpenCodeMessagePollTimeoutMs = 5_000;
+const maxOpenCodeMessagePollTimeoutMs = 300_000;
+
+/** Resolves the bounded server-side wait from configuration without accepting unsafe values. */
+export function getOpenCodeMessagePollTimeoutMs(value = process.env.OPENCODE_MESSAGE_WAIT_TIMEOUT_MS) {
+  const parsed = Number.parseInt(value ?? "", 10);
+  if (!Number.isFinite(parsed)) return defaultOpenCodeMessagePollTimeoutMs;
+  return Math.min(maxOpenCodeMessagePollTimeoutMs, Math.max(minOpenCodeMessagePollTimeoutMs, parsed));
+}
+
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -109,18 +121,38 @@ export async function listOpenCodeModels() {
 /** Server-validated model selection passed to a new OpenCode session. */
 export type OpenCodeModelSelection = Pick<OpenCodeModel, "id" | "providerID" | "variant">;
 
-/** Creates a runtime session, optionally with a caller-selected discovered model. */
-export async function createOpenCodeSession(model?: OpenCodeModelSelection) {
+/** Returns the selected model only when it is present in the current runtime discovery result. */
+export function findDiscoveredOpenCodeModel(models: OpenCodeModel[], selection: OpenCodeModelSelection) {
+  return models.find(model => (
+    model.id === selection.id &&
+    model.providerID === selection.providerID &&
+    model.variant === selection.variant
+  ));
+}
+
+/** Creates a runtime session with a server-validated, caller-selected discovered model. */
+export async function createOpenCodeSession(model: OpenCodeModelSelection) {
   const payload = await requestOpenCode<unknown>("/api/session", {
     method: "POST",
     body: JSON.stringify({
-      ...(model ? { model } : {}),
+      model,
       location: { directory: process.env.OPENCODE_WORKSPACE_DIR?.trim() || process.cwd() },
     }),
   });
   const session = unwrapData(payload);
   if (!isRecord(session) || typeof session.id !== "string") throw new OpenCodeGatewayError("OpenCode did not return a valid session.");
   return { id: session.id } satisfies OpenCodeSession;
+}
+
+/** Builds the documented legacy removal route required to delete a v2-created session. */
+export function buildOpenCodeSessionRemovalPath(sessionID: string, directory = process.env.OPENCODE_WORKSPACE_DIR?.trim() || process.cwd()) {
+  const query = new URLSearchParams({ directory });
+  return `/session/${encodeURIComponent(sessionID)}?${query.toString()}`;
+}
+
+/** Removes a transient or explicitly discarded OpenCode session using its source-defined route. */
+export async function deleteOpenCodeSession(sessionID: string) {
+  await requestOpenCode<void>(buildOpenCodeSessionRemovalPath(sessionID), { method: "DELETE" });
 }
 
 /** Queues a complete server-built prompt for an existing runtime session. */
@@ -132,9 +164,14 @@ export async function promptOpenCodeSession(sessionID: string, text: string) {
   return unwrapData(payload);
 }
 
-/** Waits until an OpenCode session reports completion. */
-export async function waitForOpenCodeSession(sessionID: string) {
-  await requestOpenCode<void>(`/api/session/${encodeURIComponent(sessionID)}/wait`, { method: "POST" });
+/** Returns true only for the documented runtime placeholder that lacks the wait implementation. */
+export function shouldPollOpenCodeMessages(error: unknown) {
+  return error instanceof OpenCodeGatewayError && error.status === 503 && /wait is not available yet/i.test(error.message);
+}
+
+/** Identifies a bounded poll timeout where OpenCode accepted the prompt but has not produced text yet. */
+export function isOpenCodeResponsePending(error: unknown) {
+  return error instanceof OpenCodeGatewayError && error.status === 504 && /expected assistant response before the server-side wait timeout/i.test(error.message);
 }
 
 /** Extracts only nonempty user/assistant text from an OpenCode message response. */
@@ -161,6 +198,28 @@ export function mapOpenCodeMessages(payload: unknown): OpenCodeConversationMessa
 export async function listOpenCodeMessages(sessionID: string) {
   const payload = await requestOpenCode<unknown>(`/api/session/${encodeURIComponent(sessionID)}/message?order=asc`);
   return mapOpenCodeMessages(payload);
+}
+
+/**
+ * Waits for session completion. Older embedded builds return 503 for their documented
+ * wait endpoint, so the gateway falls back to bounded server-side message polling rather
+ * than claiming a generated response before OpenCode has returned one.
+ */
+export async function waitForOpenCodeSession(sessionID: string, expectedAssistantMessages = 1, timeoutMs = getOpenCodeMessagePollTimeoutMs()) {
+  try {
+    await requestOpenCode<void>(`/api/session/${encodeURIComponent(sessionID)}/wait`, { method: "POST" });
+    return;
+  } catch (error) {
+    if (!shouldPollOpenCodeMessages(error)) throw error;
+  }
+
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const assistantCount = (await listOpenCodeMessages(sessionID)).filter(message => message.role === "assistant").length;
+    if (assistantCount >= expectedAssistantMessages) return;
+    await new Promise(resolve => setTimeout(resolve, opencodeMessagePollIntervalMs));
+  }
+  throw new OpenCodeGatewayError("OpenCode did not return the expected assistant response before the server-side wait timeout.", 504);
 }
 
 /** Filters runtime permission data to requests that belong to the specified session. */

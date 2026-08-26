@@ -13,7 +13,9 @@ describe("embedded engine status contract", () => {
     const presenton = engines.find(engine => engine.id === "presenton");
     const secondBrain = engines.find(engine => engine.id === "second-brain");
 
-    expect(openCode).toMatchObject({ id: "opencode", agentReady: false, modelCount: 0 });
+    expect(openCode).toMatchObject({ id: "opencode", sourceAvailable: true });
+    expect(openCode?.agentReady).toBe(openCode?.status === "ready");
+    expect(openCode?.modelCount).toBeGreaterThanOrEqual(0);
     expect(theia).toMatchObject({ id: "theia", status: "build-required", agentReady: false });
     expect(presenton).toMatchObject({ id: "presenton", agentReady: false });
     expect(secondBrain).toMatchObject({ id: "second-brain", status: "available", agentReady: true });

@@ -12,6 +12,8 @@
     "test": "vitest run",
     "verify:opencode": "node --import tsx scripts/verify-embedded-opencode.mjs",
     "verify:opencode:session": "node --import tsx scripts/verify-embedded-opencode-session.mjs",
+    "verify:opencode:turn": "node --import tsx scripts/verify-embedded-opencode-turn.mjs",
+    "verify:opencode:timeout": "node --import tsx scripts/verify-embedded-opencode-timeout.mjs",
     "verify:integration-boundary": "node scripts/verify-integration-boundary.mjs",
     "verify:workspace-e2e": "node scripts/verify-workspace-e2e.mjs",
     "audit:jsdoc": "node scripts/audit-jsdoc-coverage.mjs",

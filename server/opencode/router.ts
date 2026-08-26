@@ -1,7 +1,7 @@
 /**
  * @fileoverview OpenCode status and session contract. Read-only evidence remains public for
- * configuration visibility; every stateful session operation requires a local account session
- * plus the explicit server execution flag, and injects server-owned workspace context.
+ * configuration visibility; every stateful session operation requires a local account session,
+ * a healthy loopback runtime, and injects server-owned workspace context.
  */
 
 import { TRPCError } from "@trpc/server";
@@ -11,14 +11,17 @@ import { buildAgentWorkspacePrompt, type AgentWorkspaceSection } from "../engine
 import { embeddedOpenCodeStatus, readEmbeddedOpenCodePackage } from "./embeddedRuntime.js";
 import {
   createOpenCodeSession,
+  findDiscoveredOpenCodeModel,
   listOpenCodeMessages,
   listOpenCodeModels,
   listOpenCodePermissions,
   OpenCodeGatewayError,
+  isOpenCodeResponsePending,
   promptOpenCodeSession,
   replyToOpenCodePermission,
   waitForOpenCodeSession,
 } from "./api.js";
+import { isOpenCodeExecutionDisabled } from "./policy.js";
 
 const modelSelection = z.object({
   id: z.string().min(1).max(256),
@@ -36,22 +39,32 @@ function exposeGatewayError(error: unknown): never {
 
 /**
  * Tool-capable session routes require the server-issued local account session
- * and an explicit server-side execution opt-in. Browser data is never trusted
+ * and a healthy loopback runtime. Deployments can explicitly disable execution
+ * with `OPENCODE_EMBEDDED_EXECUTION_ENABLED=0`; browser data is never trusted
  * as the agent's workspace context.
  */
 const openCodeExecutionProcedure = protectedProcedure.use(async ({ next }) => {
-  if (process.env.OPENCODE_EMBEDDED_EXECUTION_ENABLED !== "1") {
+  if (isOpenCodeExecutionDisabled()) {
     throw new TRPCError({
       code: "FORBIDDEN",
-      message: "OpenCode session execution is disabled until a server-side authorization policy is configured.",
+      message: "OpenCode session execution is disabled by the server-side policy.",
     });
   }
+
+  const runtime = await embeddedOpenCodeStatus();
+  if (runtime.health !== "healthy") {
+    throw new TRPCError({
+      code: "PRECONDITION_FAILED",
+      message: "OpenCode embedded runtime is not healthy. Start the server-side runtime before creating a session.",
+    });
+  }
+
   return next();
 });
 
 /**
- * Read-only runtime evidence. Startup and provider credentials remain outside
- * browser-initiated RPC calls until Osamah's server-side permission flow ships.
+ * Read-only runtime evidence and protected session operations. Startup and
+ * provider credentials remain outside browser-initiated RPC calls.
  */
 /** Gateway contract exposing status/models and policy-gated OpenCode session operations. */
 export const openCodeRouter = router({
@@ -59,8 +72,20 @@ export const openCodeRouter = router({
   source: publicProcedure.query(async () => readEmbeddedOpenCodePackage()),
   models: publicProcedure.query(async () => listOpenCodeModels().catch(exposeGatewayError)),
   session: router({
-    create: openCodeExecutionProcedure.input(z.object({ model: modelSelection.optional() })).mutation(async ({ input }) => {
-      return createOpenCodeSession(input.model).catch(exposeGatewayError);
+    create: openCodeExecutionProcedure.input(z.object({ model: modelSelection })).mutation(async ({ input }) => {
+      try {
+        const discovered = await listOpenCodeModels();
+        const model = findDiscoveredOpenCodeModel(discovered, input.model);
+        if (!model) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "The selected OpenCode model is no longer enabled by the embedded runtime.",
+          });
+        }
+        return await createOpenCodeSession({ id: model.id, providerID: model.providerID, variant: model.variant });
+      } catch (error) {
+        return exposeGatewayError(error);
+      }
     }),
     prompt: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1), text: z.string().trim().min(1).max(32_000), section: workspaceSection })).mutation(async ({ ctx, input }) => {
       const prompt = await buildAgentWorkspacePrompt(ctx.user.id, input.section as AgentWorkspaceSection, input.text);
@@ -69,13 +94,20 @@ export const openCodeRouter = router({
     send: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1), text: z.string().trim().min(1).max(32_000), section: workspaceSection })).mutation(async ({ ctx, input }) => {
       try {
         const prompt = await buildAgentWorkspacePrompt(ctx.user.id, input.section as AgentWorkspaceSection, input.text);
+        const initialAssistantMessageCount = (await listOpenCodeMessages(input.sessionID)).filter(message => message.role === "assistant").length;
         await promptOpenCodeSession(input.sessionID, prompt);
-        await waitForOpenCodeSession(input.sessionID);
+        let pending = false;
+        try {
+          await waitForOpenCodeSession(input.sessionID, initialAssistantMessageCount + 1);
+        } catch (error) {
+          if (isOpenCodeResponsePending(error)) pending = true;
+          else throw error;
+        }
         const [messages, permissions] = await Promise.all([
           listOpenCodeMessages(input.sessionID),
           listOpenCodePermissions(input.sessionID),
         ]);
-        return { messages, permissions };
+        return { messages, permissions, pending };
       } catch (error) {
         return exposeGatewayError(error);
       }

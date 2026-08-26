@@ -1,23 +1,23 @@
 {
-  "generatedAt": "2026-08-26T01:24:49.183Z",
+  "generatedAt": "2026-08-26T02:24:08.207Z",
   "scope": "server/** excluding server/_core/**",
   "definition": "A production symbol is counted as documented when a JSDoc block immediately precedes its exported declaration.",
   "total": {
-    "files": 38,
-    "fileOverviews": 23,
-    "exports": 128,
-    "documentedExports": 128
+    "files": 42,
+    "fileOverviews": 26,
+    "exports": 138,
+    "documentedExports": 138
   },
   "totalsByScope": {
     "production": {
-      "files": 23,
-      "fileOverviews": 23,
-      "exports": 128,
-      "documentedExports": 128
+      "files": 25,
+      "fileOverviews": 25,
+      "exports": 138,
+      "documentedExports": 138
     },
     "test": {
-      "files": 15,
-      "fileOverviews": 0,
+      "files": 17,
+      "fileOverviews": 1,
       "exports": 0,
       "documentedExports": 0
     }
@@ -45,6 +45,22 @@
       "hasFileOverview": true,
       "exportCount": 11,
       "documentedExportCount": 11,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/engines/agentContext.test.ts",
+      "scope": "test",
+      "hasFileOverview": true,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/engines/agentContext.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 3,
+      "documentedExportCount": 3,
       "undocumentedExports": []
     },
     {
@@ -99,8 +115,8 @@
       "file": "server/opencode/api.ts",
       "scope": "production",
       "hasFileOverview": true,
-      "exportCount": 16,
-      "documentedExportCount": 16,
+      "exportCount": 22,
+      "documentedExportCount": 22,
       "undocumentedExports": []
     },
     {
@@ -117,6 +133,22 @@
       "hasFileOverview": true,
       "exportCount": 9,
       "documentedExportCount": 9,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/opencode/policy.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/opencode/policy.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 1,
+      "documentedExportCount": 1,
       "undocumentedExports": []
     },
     {

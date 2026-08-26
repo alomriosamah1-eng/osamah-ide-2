@@ -7,8 +7,11 @@ import { skipToken } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { filterWorkspaceCommands, getWorkspaceCommands } from "@/lib/command-palette";
 import { catalogFromEmbeddedOpenCode, getOpenCodeModel, initialOpenCodeCatalog } from "@/lib/opencode-contract";
+import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
+import { getOrCreateOpenCodeSession } from "@/lib/opencode-session";
 import ServerSettingsView, { type PreferencePatch, type SavedPreferences } from "@/components/ServerSettingsView";
 import PresentationStudio from "@/components/PresentationStudio";
 import "./opencode-model.css";
@@ -237,6 +240,9 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   const [messages, setMessages] = useState<Array<{ role: "agent" | "user"; text: string; model?: string }>>([]);
   const [connectionMessage, setConnectionMessage] = useState("");
   const [pendingPermissions, setPendingPermissions] = useState<Array<{ id: string; label: string }>>([]);
+  const [trackedSessionID, setTrackedSessionID] = useState<string | null>(null);
+  const [awaitingAssistantResponse, setAwaitingAssistantResponse] = useState(false);
+  const receivedAssistantMessageIDs = useRef(new Set<string>());
   const activeSessionId = useRef<string | null>(null);
   const runtimeQuery = trpc.opencode.status.useQuery();
   const engineContextQuery = trpc.engines.context.useQuery({ section: workspace }, { retry: false });
@@ -247,6 +253,10 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   const createSession = trpc.opencode.session.create.useMutation();
   const sendToSession = trpc.opencode.session.send.useMutation();
   const replyPermission = trpc.opencode.session.replyPermission.useMutation();
+  const sessionMessagesQuery = trpc.opencode.session.messages.useQuery(
+    trackedSessionID ? { sessionID: trackedSessionID } : skipToken,
+    { enabled: Boolean(trackedSessionID && awaitingAssistantResponse), refetchInterval: awaitingAssistantResponse ? 4_000 : false, retry: false },
+  );
   const modelCatalog = useMemo(() => {
     if (runtimeQuery.isLoading || modelsQuery.isFetching) return { runtime: "checking" as const, models: [] };
     if (runtimeQuery.data?.health !== "healthy") {
@@ -258,7 +268,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     () => getOpenCodeModel(modelCatalog, selectedModelValue),
     [modelCatalog, selectedModelValue],
   );
-  const isChatBusy = createSession.isPending || sendToSession.isPending;
+  const isChatBusy = createSession.isPending || sendToSession.isPending || awaitingAssistantResponse;
   const canSendMessage = Boolean(draft.trim() && selectedModel && modelCatalog.runtime === "ready" && !isChatBusy);
   const sendAvailabilityMessage = !draft.trim()
     ? (isAr ? "اكتب رسالة أولاً." : "Write a message first.")
@@ -280,7 +290,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     },
     ready: {
       label: isAr ? "OpenCode جاهز" : "OpenCode ready",
-      detail: isAr ? "المحرك المضمّن صحي؛ يتطلب التنفيذ تفويضاً خادمياً صريحاً ثم يستخدم جلسة OpenCode حقيقية." : "The embedded runtime is healthy; execution needs explicit server authorization, then uses a real OpenCode session.",
+      detail: isAr ? "المحرك المضمّن صحي؛ يرسل المستخدم المصادَق عليه إلى جلسة OpenCode حقيقية بعد التحقق من النموذج المختار." : "The embedded runtime is healthy; an authenticated user can use a real OpenCode session after the selected model is verified.",
       tone: "green" as const,
     },
     degraded: {
@@ -322,8 +332,26 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     setDraft("");
     setMessages([]);
     setPendingPermissions([]);
+    setTrackedSessionID(null);
+    setAwaitingAssistantResponse(false);
+    receivedAssistantMessageIDs.current.clear();
     activeSessionId.current = null;
   }, [workspace]);
+
+  useEffect(() => {
+    if (!awaitingAssistantResponse || !sessionMessagesQuery.data) return;
+    const unseenReplies = sessionMessagesQuery.data.filter(message => (
+      message.role === "assistant" && !receivedAssistantMessageIDs.current.has(message.id)
+    ));
+    if (unseenReplies.length === 0) return;
+    unseenReplies.forEach(message => receivedAssistantMessageIDs.current.add(message.id));
+    setMessages(current => [
+      ...current,
+      ...unseenReplies.map(reply => ({ role: "agent" as const, text: reply.text, model: selectedModel?.label[lang] })),
+    ]);
+    setAwaitingAssistantResponse(false);
+    setConnectionMessage("");
+  }, [awaitingAssistantResponse, lang, selectedModel, sessionMessagesQuery.data]);
 
   const sendMessage = async (text = draft) => {
     const message = text.trim();
@@ -333,17 +361,27 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
       return;
     }
     try {
-      const createdSession = await createSession.mutateAsync({ model: { id: selectedModel.modelId, providerID: selectedModel.providerId, variant: selectedModel.variant } });
-      const sessionID = activeSessionId.current ?? createdSession.id;
+      const sessionID = await getOrCreateOpenCodeSession(
+        activeSessionId.current,
+        () => createSession.mutateAsync({ model: { id: selectedModel.modelId, providerID: selectedModel.providerId, variant: selectedModel.variant } }),
+      );
       activeSessionId.current = sessionID;
+      setTrackedSessionID(sessionID);
       const result = await sendToSession.mutateAsync({ sessionID, text: message, section: workspace }) as {
         messages: Array<{ id: string; role: "user" | "assistant"; text: string }>;
         permissions: Array<{ id: string; label: string }>;
+        pending: boolean;
       };
       const replies = result.messages.filter(entry => entry.role === "assistant");
+      replies.forEach(reply => receivedAssistantMessageIDs.current.add(reply.id));
       setMessages(current => [...current, { role: "user", text: message, model: selectedModel.label[lang] }, ...replies.map(reply => ({ role: "agent" as const, text: reply.text, model: selectedModel.label[lang] }))]);
       setDraft("");
-      setConnectionMessage(replies.length === 0 ? (isAr ? "اكتملت جلسة OpenCode من دون نص مساعد بعد." : "The OpenCode session completed without assistant text yet.") : "");
+      setAwaitingAssistantResponse(result.pending);
+      setConnectionMessage(result.pending
+        ? (isAr ? "استقبل OpenCode الرسالة وما زال ينتظر رد المزوّد؛ ستتابع الجلسة الرد تلقائياً." : "OpenCode accepted the message and is waiting for the provider; this session will continue checking automatically.")
+        : replies.length === 0
+          ? (isAr ? "اكتملت جلسة OpenCode من دون نص مساعد بعد." : "The OpenCode session completed without assistant text yet.")
+          : "");
       setPendingPermissions(result.permissions);
     } catch (error) {
       const detail = error instanceof Error ? error.message : isAr ? "حدث تعذر غير معروف." : "An unknown failure occurred.";
@@ -920,10 +958,23 @@ function SecondMind({ lang }: { lang: Language }) {
 
 function CommandPalette({ lang, onClose, onNavigate }: { lang: Language; onClose: () => void; onNavigate: (workspace: Workspace) => void }) {
   const isAr = lang === "ar";
-  const commands: Array<[string, string, Workspace | null, React.ReactNode]> = isAr
-    ? [["اسأل ذكاء أسامة", "ابدأ محادثة مع السياق الحالي", null, <Bot size={16} />], ["إنشاء مشروع", "مساحة برمجة جديدة", "programming", <Code2 size={16} />], ["إنشاء عرض", "استوديو عروض جديد", "presentations", <Presentation size={16} />], ["البحث في العقل الثاني", "استكشف المعرفة المتصلة", "mind", <BookOpen size={16} />]]
-    : [["Ask Osamah AI", "Start a conversation with the current context", null, <Bot size={16} />], ["Create project", "Start a new programming workspace", "programming", <Code2 size={16} />], ["Create presentation", "Start a new presentation studio", "presentations", <Presentation size={16} />], ["Search Second Mind", "Explore connected knowledge", "mind", <BookOpen size={16} />]];
-  return <div className="command-overlay" role="dialog" aria-modal="true" aria-label={isAr ? "لوحة الأوامر" : "Command palette"} onMouseDown={onClose}><div className="command-palette glass-panel" onMouseDown={(event) => event.stopPropagation()}><div className="command-input"><Search size={18} /><input autoFocus placeholder={isAr ? "اكتب أمراً أو ابحث…" : "Type a command or search…"} /><kbd>ESC</kbd></div><div className="command-section"><span>{isAr ? "اقتراحات" : "Suggestions"}</span>{commands.map(([title, detail, target, icon]) => <button key={title} onClick={() => { if (target) onNavigate(target); onClose(); }}><span className="command-icon">{icon}</span><div><strong>{title}</strong><small>{detail}</small></div>{target && <ChevronRight size={16} />}</button>)}</div><div className="command-footer"><span><kbd>↵</kbd> {isAr ? "للاختيار" : "to select"}</span><span><kbd>↑↓</kbd> {isAr ? "للتنقل" : "to navigate"}</span></div></div></div>;
+  const [query, setQuery] = useState("");
+  const [activeIndex, setActiveIndex] = useState(0);
+  const commands = useMemo(() => filterWorkspaceCommands(getWorkspaceCommands(lang), query), [lang, query]);
+  const iconFor = (icon: "code" | "presentation" | "mind") => icon === "code" ? <Code2 size={16} /> : icon === "presentation" ? <Presentation size={16} /> : <BookOpen size={16} />;
+  const execute = (index: number) => {
+    const command = commands[index];
+    if (!command) return;
+    onNavigate(command.target);
+    onClose();
+  };
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
+    if (event.key === "ArrowDown") { event.preventDefault(); setActiveIndex(current => Math.min(current + 1, Math.max(commands.length - 1, 0))); return; }
+    if (event.key === "ArrowUp") { event.preventDefault(); setActiveIndex(current => Math.max(current - 1, 0)); return; }
+    if (event.key === "Enter") { event.preventDefault(); execute(activeIndex); }
+  };
+  return <div className="command-overlay" role="dialog" aria-modal="true" aria-label={isAr ? "لوحة الأوامر" : "Command palette"} onMouseDown={onClose}><div className="command-palette glass-panel" onMouseDown={(event) => event.stopPropagation()}><div className="command-input"><Search size={18} /><input autoFocus value={query} onChange={event => { setQuery(event.target.value); setActiveIndex(0); }} onKeyDown={handleKeyDown} placeholder={isAr ? "اكتب أمراً أو ابحث…" : "Type a command or search…"} role="combobox" aria-expanded="true" aria-controls="workspace-command-results" aria-activedescendant={commands[activeIndex] ? `workspace-command-${commands[activeIndex].target}` : undefined} /><kbd>ESC</kbd></div><div className="command-section" id="workspace-command-results" role="listbox"><span>{isAr ? "اقتراحات" : "Suggestions"}</span>{commands.map((command, index) => <button id={`workspace-command-${command.target}`} key={command.target} type="button" role="option" aria-selected={index === activeIndex} className={index === activeIndex ? "command-active" : ""} onMouseEnter={() => setActiveIndex(index)} onClick={() => execute(index)}><span className="command-icon">{iconFor(command.icon)}</span><div><strong>{command.title}</strong><small>{command.detail}</small></div><ChevronRight size={16} /></button>)}{commands.length === 0 && <p className="workspace-data-muted">{isAr ? "لا توجد أوامر مطابقة." : "No matching commands."}</p>}</div><div className="command-footer"><span><kbd>↵</kbd> {isAr ? "للتنفيذ" : "to run"}</span><span><kbd>↑↓</kbd> {isAr ? "للتنقل" : "to navigate"}</span></div></div></div>;
 }
 
 export default function OsamahWorkspace() {
