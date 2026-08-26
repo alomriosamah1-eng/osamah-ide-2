@@ -12,7 +12,7 @@ import { catalogFromEmbeddedOpenCode, getOpenCodeModel, getOpenCodeModelPlacehol
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { getOrCreateOpenCodeSession, isOpenCodeSessionCleanupBlocked, reconcileOpenCodePendingPermissions, removeResolvedOpenCodePermission, shouldPollOpenCodeSessionPermissions, type OpenCodePendingPermission } from "@/lib/opencode-session";
-import { shouldConfirmUnsavedFileTransition, type UnsavedFileTransition } from "@/lib/unsaved-file-guard";
+import { shouldConfirmUnsavedFileTransition, shouldConfirmUnsavedKnowledgeTransition, type UnsavedFileTransition, type UnsavedKnowledgeTransition } from "@/lib/unsaved-file-guard";
 import { getWorkspaceHelpEnginePhase } from "@/lib/workspace-help";
 import ServerSettingsView, { type PreferencePatch, type SavedPreferences } from "@/components/ServerSettingsView";
 import PresentationStudio from "@/components/PresentationStudio";
@@ -989,6 +989,18 @@ function SecondMind({ lang }: { lang: Language }) {
   const links = linksQuery.data ?? [];
   const selectedLinks = selectedId ? links.filter(link => link.fromItemId === selectedId || link.toItemId === selectedId) : [];
   const pending = createItem.isPending || updateItem.isPending || removeItem.isPending || createLink.isPending || updateLink.isPending || removeLink.isPending || extractCandidates.isPending || materializeTasks.isPending;
+  const hasUnsavedKnowledgeChanges = Boolean(selected) && (
+    title !== selected?.title
+    || kind !== selected?.kind
+    || content !== (selected?.content ?? "")
+    || sourceUrl !== (selected?.sourceUrl ?? "")
+  );
+  const confirmKnowledgeTransition = (transition: UnsavedKnowledgeTransition) => {
+    if (!shouldConfirmUnsavedKnowledgeTransition({ hasActiveItem: Boolean(selected), hasUnsavedChanges: hasUnsavedKnowledgeChanges, transition })) return true;
+    return window.confirm(isAr
+      ? "للعنصر الحالي تعديلات غير محفوظة. سيؤدي هذا الانتقال إلى تجاهلها. هل تريد المتابعة؟"
+      : "The current knowledge item has unsaved changes. This transition will discard them. Continue?");
+  };
 
   useEffect(() => {
     if (!selected && items[0]) setSelectedId(items[0].id);
@@ -1025,7 +1037,20 @@ function SecondMind({ lang }: { lang: Language }) {
       createItem.mutate(payload, { onSuccess: item => setSelectedId(item.id) });
     }
   };
-  const select = (id: number) => setSelectedId(id);
+  const select = (id: number) => {
+    if (id === selectedId || !confirmKnowledgeTransition("switch-knowledge-item")) return;
+    setSelectedId(id);
+  };
+  const startNewNote = () => {
+    if (!confirmKnowledgeTransition("create-knowledge-item")) return;
+    resetDraft();
+  };
+  const deleteSelectedItem = () => {
+    if (!selectedId || !confirmKnowledgeTransition("delete-knowledge-item")) return;
+    if (window.confirm(isAr ? "حذف هذا العنصر نهائياً؟" : "Delete this item permanently?")) {
+      removeItem.mutate({ id: selectedId }, { onSuccess: resetDraft });
+    }
+  };
   const kindLabel = (itemKind: "note" | "source" | "insight") => itemKind === "note" ? (isAr ? "ملاحظة" : "Note") : itemKind === "source" ? (isAr ? "مصدر" : "Source") : (isAr ? "رؤية" : "Insight");
   const itemLabel = (itemId: number) => items.find(item => item.id === itemId)?.title ?? (isAr ? "عنصر محذوف" : "Deleted item");
   const createSelectedLink = () => {
@@ -1041,7 +1066,7 @@ function SecondMind({ lang }: { lang: Language }) {
 
   return (
     <div className="mind-view workspace-view secondbrain-view">
-      <div className="mind-toolbar"><div><span className="eyebrow"><Signal tone="cyan" pulse /> {isAr ? "Second Brain · مصدر فعلي" : "Second Brain · real source"}</span><h2>{isAr ? "معرفتك المحفوظة" : "Your saved knowledge"}</h2></div><div className="mind-toolbar-actions"><button onClick={resetDraft} disabled={pending}><Plus size={15} /> {isAr ? "ملاحظة جديدة" : "New note"}</button></div></div>
+      <div className="mind-toolbar"><div><span className="eyebrow"><Signal tone="cyan" pulse /> {isAr ? "Second Brain · مصدر فعلي" : "Second Brain · real source"}</span><h2>{isAr ? "معرفتك المحفوظة" : "Your saved knowledge"}</h2></div><div className="mind-toolbar-actions"><button onClick={startNewNote} disabled={pending}><Plus size={15} /> {isAr ? "ملاحظة جديدة" : "New note"}</button></div></div>
       <div className="mind-grid secondbrain-grid">
         <aside className="knowledge-sidebar glass-panel">
           <SectionLabel>{isAr ? "العناصر" : "Items"}</SectionLabel>
@@ -1064,7 +1089,7 @@ function SecondMind({ lang }: { lang: Language }) {
             <div className="secondbrain-form-row"><label>{isAr ? "النوع" : "Kind"}<select value={kind} onChange={event => setKind(event.target.value as typeof kind)} disabled={pending}><option value="note">{isAr ? "ملاحظة" : "Note"}</option><option value="source">{isAr ? "مصدر" : "Source"}</option><option value="insight">{isAr ? "رؤية" : "Insight"}</option></select></label><label>{isAr ? "رابط المصدر" : "Source URL"}<input value={sourceUrl} onChange={event => setSourceUrl(event.target.value)} placeholder="https://…" disabled={pending} /></label></div>
             <label>{isAr ? "المحتوى" : "Content"}<textarea value={content} onChange={event => setContent(event.target.value)} placeholder={isAr ? "اكتب ما تريد حفظه. تستخدم مهام - [ ] النص الأصلي لـSecond Brain." : "Write what you want to keep. Use - [ ] tasks for the original Second Brain extractor."} disabled={pending} /></label>
           </div>
-          <div className="workspace-editor-actions"><span>{isAr ? "يتطلب استخراج المهام ملاحظة محفوظة." : "Task extraction requires a saved note."}</span>{selectedId && <button type="button" className="danger-action" onClick={() => { if (window.confirm(isAr ? "حذف هذا العنصر نهائياً؟" : "Delete this item permanently?")) { removeItem.mutate({ id: selectedId }, { onSuccess: resetDraft }); } }} disabled={pending}><Trash2 size={13} /> {isAr ? "حذف" : "Delete"}</button>}<button type="button" className="save-action" onClick={save} disabled={pending || !title.trim()}>{isAr ? "حفظ" : "Save"}</button></div>
+          <div className="workspace-editor-actions"><span>{isAr ? "يتطلب استخراج المهام ملاحظة محفوظة." : "Task extraction requires a saved note."}</span>{selectedId && <button type="button" className="danger-action" onClick={deleteSelectedItem} disabled={pending}><Trash2 size={13} /> {isAr ? "حذف" : "Delete"}</button>}<button type="button" className="save-action" onClick={save} disabled={pending || !title.trim()}>{isAr ? "حفظ" : "Save"}</button></div>
           {operationError && <p className="workspace-operation-error secondbrain-operation-error" role="alert">{isAr ? `تعذر إتمام العملية: ${operationError}` : `The operation could not be completed: ${operationError}`}</p>}
           {selectedId && <div className="secondbrain-link-editor"><div><Link2 size={14} /><strong>{isAr ? "ربط عنصر معرفي" : "Link a knowledge item"}</strong></div><select value={linkTargetId} onChange={event => setLinkTargetId(event.target.value)} disabled={pending}><option value="">{isAr ? "اختر عنصراً محفوظاً" : "Choose a saved item"}</option>{items.filter(item => item.id !== selectedId && !links.some(link => link.fromItemId === selectedId && link.toItemId === item.id)).map(item => <option value={item.id} key={item.id}>{item.title}</option>)}</select><input value={linkLabel} onChange={event => setLinkLabel(event.target.value)} maxLength={160} placeholder={isAr ? "وصف الرابط (اختياري)" : "Link label (optional)"} disabled={pending} /><button type="button" onClick={createSelectedLink} disabled={pending || !linkTargetId}>{isAr ? "إضافة الرابط" : "Add link"}</button></div>}
         </section>

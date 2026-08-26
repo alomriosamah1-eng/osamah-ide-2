@@ -9,10 +9,16 @@ export type UnsavedDraftTransition =
   | "create-deck"
   | "create-slide"
   | "delete-deck"
-  | "delete-slide";
+  | "delete-slide"
+  | "switch-knowledge-item"
+  | "create-knowledge-item"
+  | "delete-knowledge-item";
 
 /** A file-editor transition retained for the programming workspace API. */
 export type UnsavedFileTransition = Extract<UnsavedDraftTransition, "close-file" | "switch-file" | "switch-project" | "create-project">;
+
+/** A knowledge-editor transition that would replace or discard the current note draft. */
+export type UnsavedKnowledgeTransition = Extract<UnsavedDraftTransition, "switch-knowledge-item" | "create-knowledge-item" | "delete-knowledge-item">;
 
 /**
  * Returns whether the user must explicitly confirm an editor transition.
@@ -45,4 +51,17 @@ export function shouldConfirmUnsavedFileTransition({
   transition: UnsavedFileTransition;
 }): boolean {
   return shouldConfirmUnsavedDraftTransition({ hasActiveDraft: hasActiveFile, hasUnsavedChanges, transition });
+}
+
+/** Applies the generic draft rule to the active Second Brain knowledge item. */
+export function shouldConfirmUnsavedKnowledgeTransition({
+  hasActiveItem,
+  hasUnsavedChanges,
+  transition,
+}: {
+  hasActiveItem: boolean;
+  hasUnsavedChanges: boolean;
+  transition: UnsavedKnowledgeTransition;
+}): boolean {
+  return shouldConfirmUnsavedDraftTransition({ hasActiveDraft: hasActiveItem, hasUnsavedChanges, transition });
 }

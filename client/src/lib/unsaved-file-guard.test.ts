@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { shouldConfirmUnsavedDraftTransition, shouldConfirmUnsavedFileTransition } from "./unsaved-file-guard";
+import { shouldConfirmUnsavedDraftTransition, shouldConfirmUnsavedFileTransition, shouldConfirmUnsavedKnowledgeTransition } from "./unsaved-file-guard";
 
 describe("shouldConfirmUnsavedFileTransition", () => {
   it("does not interrupt a transition when no editor draft has changed", () => {
@@ -17,6 +17,14 @@ describe("shouldConfirmUnsavedFileTransition", () => {
     for (const transition of ["switch-slide", "switch-deck", "create-deck", "create-slide", "delete-deck", "delete-slide"] as const) {
       expect(shouldConfirmUnsavedDraftTransition({ hasActiveDraft: true, hasUnsavedChanges: true, transition })).toBe(true);
       expect(shouldConfirmUnsavedDraftTransition({ hasActiveDraft: true, hasUnsavedChanges: false, transition })).toBe(false);
+    }
+  });
+
+  it("protects a changed Second Brain item before switching, creating, or deleting", () => {
+    for (const transition of ["switch-knowledge-item", "create-knowledge-item", "delete-knowledge-item"] as const) {
+      expect(shouldConfirmUnsavedKnowledgeTransition({ hasActiveItem: true, hasUnsavedChanges: true, transition })).toBe(true);
+      expect(shouldConfirmUnsavedKnowledgeTransition({ hasActiveItem: true, hasUnsavedChanges: false, transition })).toBe(false);
+      expect(shouldConfirmUnsavedKnowledgeTransition({ hasActiveItem: false, hasUnsavedChanges: true, transition })).toBe(false);
     }
   });
 });
