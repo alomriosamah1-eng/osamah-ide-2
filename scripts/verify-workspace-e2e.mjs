@@ -164,6 +164,9 @@ try {
     language: "TypeScript",
   });
   projectId = project.id;
+  if (project.language !== "TypeScript" || project.description !== "Created only to verify protected CRUD.") {
+    throw new Error("Project creation metadata was not persisted.");
+  }
 
   const reassignmentProject = await client.workspace.project.create.mutate({
     name: "E2E Reassignment Target",
@@ -208,7 +211,11 @@ try {
     client.workspace.task.list.query(),
     client.workspace.activity.list.query({ limit: 25 }),
   ]);
-  if (!projects.some(item => item.id === projectId)) throw new Error("Created project was not listed.");
+  const listedProject = projects.find(item => item.id === projectId);
+  if (!listedProject) throw new Error("Created project was not listed.");
+  if (listedProject.language !== "TypeScript" || listedProject.description !== "Created only to verify protected CRUD.") {
+    throw new Error("Project creation metadata was not returned by the list contract.");
+  }
   if (!files.some(item => item.id === fileId && item.path === "src/app.ts")) throw new Error("Saved file was not listed.");
   if (!tasks.some(item => item.id === taskId && item.status === "done" && item.projectId === null)) throw new Error("Updated general task was not listed.");
   if (!activity.some(item => item.entityType === "project" && item.entityId === projectId)) throw new Error("Workspace activity was not recorded.");
@@ -322,7 +329,7 @@ try {
   if (cookie) throw new Error("Logout did not clear the local session cookie.");
 
   console.log(JSON.stringify({
-    verified: ["local-password-recovery-registration", "server-preferences-create-update", "local-profile-update", "presenton-source-status", "presentation-create-rename-delete", "presentation-slide-create-update-reorder-delete", "workspace-cross-account-isolation", "presentation-cross-account-isolation", "project-create-update-delete", "task-project-reassign-clear", "file-create-save-rename-delete", "activity-log", "second-brain-note-task-extraction", "second-brain-search", "second-brain-link-create-update-delete", "second-brain-self-link-rejected", "second-brain-cross-account-isolation"],
+    verified: ["local-password-recovery-registration", "server-preferences-create-update", "local-profile-update", "presenton-source-status", "presentation-create-rename-delete", "presentation-slide-create-update-reorder-delete", "workspace-cross-account-isolation", "presentation-cross-account-isolation", "project-create-metadata-update-delete", "task-project-reassign-clear", "file-create-save-rename-delete", "activity-log", "second-brain-note-task-extraction", "second-brain-search", "second-brain-link-create-update-delete", "second-brain-self-link-rejected", "second-brain-cross-account-isolation"],
     cleanedWorkspaceContent: true,
   }, null, 2));
 } catch (error) {
