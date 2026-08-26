@@ -14,6 +14,7 @@ import { trpc } from "@/lib/trpc";
 import { getOrCreateOpenCodeSession, isOpenCodeSessionCleanupBlocked, reconcileOpenCodePendingPermissions, removeResolvedOpenCodePermission, shouldPollOpenCodeSessionPermissions, type OpenCodePendingPermission } from "@/lib/opencode-session";
 import { shouldConfirmUnsavedFileTransition, shouldConfirmUnsavedKnowledgeTransition, type UnsavedFileTransition, type UnsavedKnowledgeTransition } from "@/lib/unsaved-file-guard";
 import { getWorkspaceHelpEnginePhase } from "@/lib/workspace-help";
+import { getWorkspaceTaskBoardPhase, nextWorkspaceTaskStatus, type WorkspaceTaskStatus } from "@/lib/workspace-tasks";
 import ServerSettingsView, { type PreferencePatch, type SavedPreferences } from "@/components/ServerSettingsView";
 import PresentationStudio from "@/components/PresentationStudio";
 import "./opencode-model.css";
@@ -635,6 +636,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
 function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate: (workspace: Workspace) => void; onCommand: () => void }) {
   const t = content[lang];
   const isAr = lang === "ar";
+  const utils = trpc.useUtils();
   const projectsQuery = trpc.workspace.project.list.useQuery();
   const tasksQuery = trpc.workspace.task.list.useQuery();
   const activityQuery = trpc.workspace.activity.list.useQuery({ limit: 5 });
@@ -649,6 +651,21 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
   const presentations = presentationsQuery.data ?? [];
   const activeTasks = tasks.filter(task => task.status !== "done").length;
   const completedTasks = tasks.filter(task => task.status === "done").length;
+  const [taskOperationError, setTaskOperationError] = useState<string | null>(null);
+  const taskBoardPhase = getWorkspaceTaskBoardPhase({ isLoading: tasksQuery.isLoading, isError: tasksQuery.isError, count: tasks.length });
+  const taskUpdateMutation = trpc.workspace.task.update.useMutation({
+    onSuccess: async () => { setTaskOperationError(null); await utils.workspace.task.list.invalidate(); await utils.workspace.activity.list.invalidate(); },
+    onError: () => setTaskOperationError(isAr ? "تعذر تحديث حالة المهمة. حاول مجدداً." : "The task status could not be updated. Try again."),
+  });
+  const taskRemoveMutation = trpc.workspace.task.remove.useMutation({
+    onSuccess: async () => { setTaskOperationError(null); await utils.workspace.task.list.invalidate(); await utils.workspace.activity.list.invalidate(); },
+    onError: () => setTaskOperationError(isAr ? "تعذر حذف المهمة. حاول مجدداً." : "The task could not be deleted. Try again."),
+  });
+  const taskStatusLabel = (status: WorkspaceTaskStatus) => {
+    if (status === "todo") return isAr ? "للقيام بها" : "To do";
+    if (status === "in_progress") return isAr ? "قيد التنفيذ" : "In progress";
+    return isAr ? "مكتملة" : "Done";
+  };
   const theiaState = theiaQuery.data?.phase === "running" ? (isAr ? "يعمل" : "Running") : theiaQuery.data?.phase === "build-required" ? (isAr ? "يتطلب بناء" : "Build required") : (isAr ? "غير متاح" : "Unavailable");
   const workspaces = [
     { key: "programming" as const, title: t.programming, subtitle: isAr ? "مشاريع وملفات ومهام محفوظة بخادم Osamah" : "Osamah-server projects, files, and tasks", asset: "code", metrics: [[String(projects.length), isAr ? "مشروع" : "Projects"], [String(activeTasks), isAr ? "مهام نشطة" : "Active tasks"], [theiaState, "Theia"]] },
@@ -726,6 +743,29 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
           {activity.map(entry => <TaskRow key={entry.id} title={activitySummary(entry.action, entry.entityType, lang)} detail={activityTime(entry.createdAt, lang)} state={entry.action === "deleted" ? "queued" : "recorded"} />)}
         </section>
       </div>
+      <section className="task-board-panel glass-panel" aria-labelledby="workspace-task-board-title">
+        <SectionLabel action={<button type="button" className="text-action" onClick={() => onNavigate("programming")}>{isAr ? "فتح البرمجة" : "Open Programming"} <ChevronRight size={14} /></button>}>
+          <span id="workspace-task-board-title">{isAr ? "مهام مساحة العمل" : "Workspace tasks"}</span>
+        </SectionLabel>
+        <p className="task-board-note">{isAr ? "كل مهمة تخص حسابك. انقر الحالة لتغييرها، أو احذفها من الخادم." : "Every task belongs to your account. Select its status to update it, or remove it from the server."}</p>
+        {taskBoardPhase === "loading" ? <p className="workspace-data-muted dashboard-empty-state">{isAr ? "يُحمّل المهام…" : "Loading tasks…"}</p> : null}
+        {taskBoardPhase === "error" ? <div className="task-board-state"><p className="workspace-data-error">{isAr ? "تعذر تحميل المهام." : "Tasks could not be loaded."}</p><button type="button" className="text-action" onClick={() => void tasksQuery.refetch()}>{isAr ? "إعادة المحاولة" : "Retry"}</button></div> : null}
+        {taskBoardPhase === "empty" ? <p className="workspace-data-muted dashboard-empty-state">{isAr ? "لا توجد مهام محفوظة. ستظهر المهام التي تنشئها أو تستخرجها هنا." : "No tasks are saved. Tasks you create or extract will appear here."}</p> : null}
+        {taskBoardPhase === "ready" ? <div className="task-board-list">
+          {tasks.slice(0, 8).map(task => {
+            const isUpdating = taskUpdateMutation.isPending && taskUpdateMutation.variables?.id === task.id;
+            const isRemoving = taskRemoveMutation.isPending && taskRemoveMutation.variables?.id === task.id;
+            return <article className="task-board-row" key={task.id}>
+              <div className="task-board-copy"><strong>{task.title}</strong>{task.description ? <span>{task.description}</span> : null}</div>
+              <select aria-label={isAr ? `حالة المهمة ${task.title}` : `Status for ${task.title}`} value={task.status} disabled={isUpdating || isRemoving} onChange={event => taskUpdateMutation.mutate({ id: task.id, status: event.target.value as WorkspaceTaskStatus })}>
+                {(["todo", "in_progress", "done"] as WorkspaceTaskStatus[]).map(status => <option value={status} key={status}>{taskStatusLabel(status)}</option>)}
+              </select>
+              <button type="button" className="task-remove-button" aria-label={isAr ? `حذف المهمة ${task.title}` : `Delete ${task.title}`} disabled={isUpdating || isRemoving} onClick={() => taskRemoveMutation.mutate({ id: task.id })}><Trash2 size={15} /></button>
+            </article>;
+          })}
+        </div> : null}
+        {taskOperationError ? <p className="workspace-data-error" role="alert">{taskOperationError}</p> : null}
+      </section>
     </div>
   );
 }

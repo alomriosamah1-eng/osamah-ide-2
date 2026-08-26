@@ -113,6 +113,25 @@
 .workspace-task-row .task-complete { color: #78d6b1; }
 .workspace-task-row small { margin-inline-start: auto; color: var(--muted-foreground, #8fa0bf); }
 
+.task-board-panel { padding: 1.1rem; }
+.task-board-note { margin: -0.1rem 0 0.85rem; color: var(--muted-foreground, #8fa0bf); font-size: 0.74rem; line-height: 1.6; }
+.task-board-list { display: grid; gap: 0.5rem; }
+.task-board-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(7.6rem, auto) auto; align-items: center; gap: 0.6rem; border: 1px solid color-mix(in srgb, currentColor 10%, transparent); border-radius: 0.7rem; background: color-mix(in srgb, #10192c 54%, transparent); padding: 0.6rem 0.7rem; }
+.task-board-copy { display: grid; min-inline-size: 0; gap: 0.18rem; }
+.task-board-copy strong, .task-board-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-board-copy strong { font-size: 0.78rem; }
+.task-board-copy span { color: var(--muted-foreground, #8fa0bf); font-size: 0.69rem; }
+.task-board-row select { min-block-size: 2rem; border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: 0.5rem; background: color-mix(in srgb, #10192c 72%, transparent); color: inherit; padding-inline: 0.45rem; font: inherit; font-size: 0.72rem; }
+.task-remove-button { display: grid; inline-size: 2rem; block-size: 2rem; place-items: center; border: 1px solid color-mix(in srgb, #ff9da0 45%, transparent); border-radius: 0.5rem; background: transparent; color: #ff9da0; }
+.task-remove-button:disabled, .task-board-row select:disabled { cursor: not-allowed; opacity: 0.48; }
+.task-board-state { display: flex; align-items: center; gap: 0.6rem; }
+
+@media (max-width: 560px) {
+  .task-board-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .task-board-row select { grid-column: 1; }
+  .task-remove-button { grid-column: 2; grid-row: 1 / span 2; }
+}
+
 .secondbrain-grid { grid-template-columns: minmax(13rem, 0.75fr) minmax(23rem, 1.55fr) minmax(15rem, 0.85fr); }
 .secondbrain-item-list { max-block-size: 31rem; overflow: auto; }
 .secondbrain-item-list button small { max-inline-size: 7rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -173,8 +192,10 @@
 @media (prefers-reduced-motion: no-preference) {
   .workspace-editor-actions button,
   .workspace-task-row button,
+  .task-remove-button,
   .explorer-item { transition: transform 160ms cubic-bezier(0.23, 1, 0.32, 1), opacity 160ms cubic-bezier(0.23, 1, 0.32, 1); }
   .workspace-editor-actions button:active,
   .workspace-task-row button:active,
+  .task-remove-button:active,
   .explorer-item:active { transform: scale(0.97); }
 }
