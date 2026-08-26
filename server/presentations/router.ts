@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Protected tRPC contract for persisted presentation drafts and slides.
+ * It validates CRUD and ordering input only; Presenton generation remains separately
+ * gated by real server-side runtime readiness and provider configuration.
+ */
+
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
@@ -20,6 +26,7 @@ const id = z.number().int().positive();
 const nullableText = z.string().max(100_000).nullable().optional();
 const title = z.string().trim().min(1).max(240);
 
+/** Account-scoped API for presentation records and their ordered slide children. */
 export const presentationsRouter = router({
   list: protectedProcedure.query(({ ctx }) => listPresentations(ctx.user.id)),
   get: protectedProcedure.input(z.object({ id })).query(async ({ ctx, input }) => requireFound(await getOwnedPresentation(ctx.user.id, input.id), "Presentation")),

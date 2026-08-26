@@ -1,9 +1,16 @@
+/**
+ * @fileoverview Detects the vendored Presenton source and a separately configured
+ * loopback runtime. This bridge reports readiness only; it never enables
+ * generation unless both explicit server-side flags are present.
+ */
+
 import { access, readFile } from "node:fs/promises";
 import { constants } from "node:fs";
 import { resolve } from "node:path";
 
 type PresentonPhase = "source-missing" | "runtime-not-configured" | "unreachable" | "running";
 
+/** Truthful Presenton source, loopback-health, provider and generation state for the UI. */
 export type EmbeddedPresentonStatus = {
   phase: PresentonPhase;
   endpoint: string | null;
@@ -37,15 +44,18 @@ function configuredEndpoint() {
   }
 }
 
+/** Resolves the server-owned Presenton source root without exposing it to clients. */
 export function embeddedPresentonRoot() {
   return resolve(process.env.PRESENTON_EMBEDDED_ROOT?.trim() || resolve(process.cwd(), "third_party/presenton"));
 }
 
+/** Checks that the minimal vendored Presenton and FastAPI source markers are readable. */
 export async function hasEmbeddedPresentonSource() {
   const root = embeddedPresentonRoot();
   return (await exists(resolve(root, "package.json"))) && (await exists(resolve(root, "servers/fastapi/pyproject.toml")));
 }
 
+/** Checks specifically for the vendored FastAPI application entry module. */
 export async function hasEmbeddedPresentonFastApiSource() {
   return exists(resolve(embeddedPresentonRoot(), "servers/fastapi/api/main.py"));
 }
@@ -63,6 +73,10 @@ async function probeHealth(endpoint: string) {
   }
 }
 
+/**
+ * Computes read-only readiness from source markers, a validated server-only endpoint,
+ * a bounded health probe, and explicit provider and generation enablement flags.
+ */
 export async function embeddedPresentonStatus(): Promise<EmbeddedPresentonStatus> {
   const sourceRoot = embeddedPresentonRoot();
   const sourceAvailable = await hasEmbeddedPresentonSource();
@@ -88,6 +102,7 @@ export async function embeddedPresentonStatus(): Promise<EmbeddedPresentonStatus
   return { phase: "running", endpoint, sourceRoot, sourceAvailable, fastApiSourceAvailable, providerConfigured, generationEnabled: true, health: "healthy", upstreamApiPrefix: "/api/v1/ppt", detail: "Presenton responded and server-side generation has been explicitly enabled." };
 }
 
+/** Reads safe package metadata from the vendored Presenton source for status displays. */
 export async function readEmbeddedPresentonPackage() {
   const packagePath = resolve(embeddedPresentonRoot(), "package.json");
   const file = await readFile(packagePath, "utf8");

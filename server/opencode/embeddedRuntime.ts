@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Operational probe and explicit lifecycle helper for vendored OpenCode source.
+ * No request handler starts this process; health reports distinguish source presence from an
+ * executable runtime, so callers cannot mistake source inclusion for available AI execution.
+ */
+
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -6,6 +12,7 @@ import { resolve } from "node:path";
 
 type RuntimePhase = "source-missing" | "ready" | "running" | "unreachable" | "stopped";
 
+/** Observed source, process, and health state for the embedded OpenCode runtime. */
 export type EmbeddedOpenCodeStatus = {
   phase: RuntimePhase;
   endpoint: string;
@@ -16,6 +23,7 @@ export type EmbeddedOpenCodeStatus = {
   detail: string;
 };
 
+/** Explicit command description used only for server-initiated OpenCode startup. */
 export type EmbeddedOpenCodeServeCommand = {
   binary: string;
   args: string[];
@@ -31,6 +39,7 @@ function endpoint() {
   return `http://127.0.0.1:${safePort}`;
 }
 
+/** Resolves the configured or vendored OpenCode source root without starting it. */
 export function embeddedOpenCodeRoot() {
   const configured = process.env.OPENCODE_EMBEDDED_ROOT;
   if (configured) return resolve(configured);
@@ -46,6 +55,7 @@ async function exists(path: string) {
   }
 }
 
+/** Verifies the minimum source files required to identify the vendored OpenCode project. */
 export async function hasEmbeddedOpenCodeSource() {
   const root = embeddedOpenCodeRoot();
   return (
@@ -55,6 +65,7 @@ export async function hasEmbeddedOpenCodeSource() {
   );
 }
 
+/** Builds the loopback-only serve command for an explicitly approved operational start. */
 export function buildEmbeddedOpenCodeServeCommand(): EmbeddedOpenCodeServeCommand {
   const root = embeddedOpenCodeRoot();
   const port = endpoint().split(":").at(-1) ?? "4096";
@@ -115,6 +126,7 @@ async function waitForHealthyRuntime(timeoutMs = 12_000) {
   return false;
 }
 
+/** Reports truthful source and health evidence without mutating runtime process state. */
 export async function embeddedOpenCodeStatus(): Promise<EmbeddedOpenCodeStatus> {
   const root = embeddedOpenCodeRoot();
   const sourceAvailable = await hasEmbeddedOpenCodeSource();
@@ -157,6 +169,7 @@ export async function embeddedOpenCodeStatus(): Promise<EmbeddedOpenCodeStatus> 
   };
 }
 
+/** Reads non-secret name/version evidence from the vendored OpenCode package metadata. */
 export async function readEmbeddedOpenCodePackage() {
   const packagePath = resolve(embeddedOpenCodeRoot(), "packages/opencode/package.json");
   const file = await readFile(packagePath, "utf8");
@@ -172,6 +185,7 @@ export async function readEmbeddedOpenCodePackage() {
  * This is intentionally not called by a request handler: process startup must
  * remain an explicit, server-side operational action.
  */
+/** Starts the original vendored runtime only through an explicit server-side operation. */
 export async function startEmbeddedOpenCodeRuntime() {
   const current = await embeddedOpenCodeStatus();
   if (!current.sourceAvailable) throw new Error(current.detail);
@@ -205,6 +219,7 @@ export async function startEmbeddedOpenCodeRuntime() {
   return embeddedOpenCodeStatus();
 }
 
+/** Requests graceful shutdown of a runtime process previously started by this module. */
 export function stopEmbeddedOpenCodeRuntime() {
   if (child && !child.killed) child.kill("SIGTERM");
   child = undefined;

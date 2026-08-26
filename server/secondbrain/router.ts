@@ -1,3 +1,8 @@
+/**
+ * @fileoverview Protected tRPC contract for knowledge items, graph links, and deterministic
+ * task extraction. Optional external Second Brain services are not implied by this contract.
+ */
+
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
@@ -19,6 +24,7 @@ const linkInput = z.object({
   label: z.string().trim().max(160).nullable().optional(),
 });
 
+/** Account-scoped Second Brain API, including idempotent note-to-task materialization. */
 export const secondBrainRouter = router({
   item: router({
     list: protectedProcedure.query(({ ctx }) => listKnowledgeItems(ctx.user.id)),

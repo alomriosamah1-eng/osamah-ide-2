@@ -1,7 +1,14 @@
+/**
+ * @fileoverview Persisted per-account UI and agent preferences.
+ * All helpers receive a server-trusted user id; callers must enforce ownership
+ * before invoking them.
+ */
+
 import { eq } from "drizzle-orm";
 import { getDb } from "../db.js";
 import { userPreferences } from "../../drizzle/schema.js";
 
+/** The supported, partial update surface for a user's persisted preferences. */
 export type PreferenceUpdate = Partial<{
   language: "ar" | "en";
   theme: "dark" | "light";
@@ -10,6 +17,7 @@ export type PreferenceUpdate = Partial<{
   agentMode: "guided" | "review" | "manual";
 }>;
 
+/** Creates the Arabic, dark-mode defaults used when an account has no preference row yet. */
 export function defaultPreferencesFor(userId: number) {
   return {
     userId,
@@ -21,6 +29,7 @@ export function defaultPreferencesFor(userId: number) {
   };
 }
 
+/** Retrieves an account's preferences, lazily creating the single owned row when absent. */
 export async function getPreferences(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database is unavailable.");
@@ -33,6 +42,7 @@ export async function getPreferences(userId: number) {
   return created;
 }
 
+/** Applies only supplied preference fields and returns the freshly persisted owned row. */
 export async function updatePreferences(userId: number, input: PreferenceUpdate) {
   const db = await getDb();
   if (!db) throw new Error("Database is unavailable.");

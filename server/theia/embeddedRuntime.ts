@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Locates, probes and (only through server-controlled code) starts
+ * a built vendored Theia browser application on loopback. Browser RPC never
+ * exposes start or stop operations.
+ */
+
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { access, readFile } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -5,6 +11,7 @@ import { resolve } from "node:path";
 
 type RuntimePhase = "source-missing" | "build-required" | "ready" | "running" | "unreachable" | "stopped";
 
+/** Truthful source, build and loopback-health state for the embedded Theia integration. */
 export type EmbeddedTheiaStatus = {
   phase: RuntimePhase;
   endpoint: string;
@@ -16,6 +23,7 @@ export type EmbeddedTheiaStatus = {
   detail: string;
 };
 
+/** Server-only process description for launching a previously built Theia browser example. */
 export type EmbeddedTheiaServeCommand = {
   binary: string;
   args: string[];
@@ -31,10 +39,12 @@ function endpoint() {
   return `http://127.0.0.1:${safePort}`;
 }
 
+/** Resolves the server-owned root of the vendored Theia source snapshot. */
 export function embeddedTheiaRoot() {
   return resolve(process.env.THEIA_EMBEDDED_ROOT?.trim() || resolve(process.cwd(), "third_party/theia"));
 }
 
+/** Resolves the browser-only Theia example that supplies the supported application artifact. */
 export function embeddedTheiaApplicationRoot() {
   return resolve(process.env.THEIA_EMBEDDED_APPLICATION_ROOT?.trim() || resolve(embeddedTheiaRoot(), "examples/browser-only"));
 }
@@ -52,6 +62,7 @@ async function exists(path: string) {
   }
 }
 
+/** Checks that all required vendored Theia source markers are present and readable. */
 export async function hasEmbeddedTheiaSource() {
   const root = embeddedTheiaRoot();
   return (
@@ -61,10 +72,12 @@ export async function hasEmbeddedTheiaSource() {
   );
 }
 
+/** Checks for the generated browser-only backend entry point without attempting a build. */
 export async function hasBuiltEmbeddedTheiaApplication() {
   return exists(entryPoint());
 }
 
+/** Builds a loopback-only command for a previously built browser-only Theia application. */
 export function buildEmbeddedTheiaServeCommand(): EmbeddedTheiaServeCommand {
   const port = endpoint().split(":").at(-1) ?? "4080";
   return {
@@ -97,6 +110,7 @@ async function waitForHealthyRuntime(timeoutMs = 15_000) {
   return false;
 }
 
+/** Reports Theia source, build and health state without starting a process or fabricating readiness. */
 export async function embeddedTheiaStatus(): Promise<EmbeddedTheiaStatus> {
   const sourceRoot = embeddedTheiaRoot();
   const sourceAvailable = await hasEmbeddedTheiaSource();
@@ -153,6 +167,7 @@ export async function embeddedTheiaStatus(): Promise<EmbeddedTheiaStatus> {
   };
 }
 
+/** Reads safe package metadata from the vendored Theia source for status displays. */
 export async function readEmbeddedTheiaPackage() {
   const packagePath = resolve(embeddedTheiaRoot(), "packages/core/package.json");
   const file = await readFile(packagePath, "utf8");
@@ -193,6 +208,7 @@ export async function startEmbeddedTheiaRuntime() {
   return embeddedTheiaStatus();
 }
 
+/** Terminates only the child process started by this server module, when one exists. */
 export function stopEmbeddedTheiaRuntime() {
   if (child && !child.killed) child.kill("SIGTERM");
   child = undefined;

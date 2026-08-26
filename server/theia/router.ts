@@ -1,3 +1,5 @@
+/** @fileoverview Read-only tRPC evidence endpoints for the vendored Theia browser runtime. */
+
 import { publicProcedure, router } from "../_core/trpc";
 import { embeddedTheiaStatus, readEmbeddedTheiaPackage } from "./embeddedRuntime.js";
 

@@ -1,0 +1,331 @@
+{
+  "generatedAt": "2026-08-26T01:05:36.530Z",
+  "scope": "server/** excluding server/_core/**",
+  "definition": "A production symbol is counted as documented when a JSDoc block immediately precedes its exported declaration.",
+  "total": {
+    "files": 38,
+    "fileOverviews": 23,
+    "exports": 128,
+    "documentedExports": 128
+  },
+  "totalsByScope": {
+    "production": {
+      "files": 23,
+      "fileOverviews": 23,
+      "exports": 128,
+      "documentedExports": 128
+    },
+    "test": {
+      "files": 15,
+      "fileOverviews": 0,
+      "exports": 0,
+      "documentedExports": 0
+    }
+  },
+  "reports": [
+    {
+      "file": "server/auth.logout.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/client-static-content.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/db.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 11,
+      "documentedExportCount": 11,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/engines/router.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/engines/router.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 4,
+      "documentedExportCount": 4,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/index.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/localAuth.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/localAuth.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 8,
+      "documentedExportCount": 8,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/opencode/api.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/opencode/api.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 16,
+      "documentedExportCount": 16,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/opencode/embeddedRuntime.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/opencode/embeddedRuntime.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 9,
+      "documentedExportCount": 9,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/opencode/router.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/opencode/router.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 1,
+      "documentedExportCount": 1,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/preferences/db.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/preferences/db.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 4,
+      "documentedExportCount": 4,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/preferences/router.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 1,
+      "documentedExportCount": 1,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/presentations/db.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/presentations/db.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 12,
+      "documentedExportCount": 12,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/presentations/presentation-studio-status.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/presentations/router.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 1,
+      "documentedExportCount": 1,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/presenton/embeddedRuntime.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/presenton/embeddedRuntime.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 6,
+      "documentedExportCount": 6,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/presenton/router.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 1,
+      "documentedExportCount": 1,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/routers.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 2,
+      "documentedExportCount": 2,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/secondbrain/db.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/secondbrain/db.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 14,
+      "documentedExportCount": 14,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/secondbrain/extract.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/secondbrain/extract.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 1,
+      "documentedExportCount": 1,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/secondbrain/router.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 1,
+      "documentedExportCount": 1,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/storage.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 3,
+      "documentedExportCount": 3,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/theia/embeddedRuntime.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/theia/embeddedRuntime.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 11,
+      "documentedExportCount": 11,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/theia/router.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 1,
+      "documentedExportCount": 1,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/workspace/access.test.ts",
+      "scope": "test",
+      "hasFileOverview": false,
+      "exportCount": 0,
+      "documentedExportCount": 0,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/workspace/access.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 3,
+      "documentedExportCount": 3,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/workspace/db.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 17,
+      "documentedExportCount": 17,
+      "undocumentedExports": []
+    },
+    {
+      "file": "server/workspace/router.ts",
+      "scope": "production",
+      "hasFileOverview": true,
+      "exportCount": 1,
+      "documentedExportCount": 1,
+      "undocumentedExports": []
+    }
+  ]
+}

@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Account-scoped persistence for Second Brain items and directed links.
+ * Link endpoints are verified as owned before insertion, preserving graph isolation
+ * even when the client supplies arbitrary numeric identifiers.
+ */
+
 import { and, desc, eq, inArray, like, or } from "drizzle-orm";
 import { knowledgeItems, knowledgeLinks } from "../../drizzle/schema";
 import { getDb } from "../db";
@@ -10,6 +16,7 @@ async function requireDatabase() {
   return db;
 }
 
+/** Writable fields for a stored knowledge item. */
 export type KnowledgeInput = {
   title: string;
   kind: "note" | "source" | "insight";
@@ -17,22 +24,26 @@ export type KnowledgeInput = {
   sourceUrl?: string | null;
 };
 
+/** Writable fields for a directed relation between two owned knowledge items. */
 export type KnowledgeLinkInput = {
   fromItemId: number;
   toItemId: number;
   label?: string | null;
 };
 
+/** Rejects self-links before the persistence layer performs endpoint lookups. */
 export function hasDistinctKnowledgeLinkEndpoints(input: Pick<KnowledgeLinkInput, "fromItemId" | "toItemId">) {
   return input.fromItemId !== input.toItemId;
 }
 
+/** Returns a knowledge item only when it belongs to `ownerId`. */
 export async function getOwnedKnowledgeItem(ownerId: number, id: number) {
   const db = await requireDatabase();
   const rows = await db.select().from(knowledgeItems).where(and(eq(knowledgeItems.id, id), eq(knowledgeItems.ownerId, ownerId))).limit(1);
   return rows[0];
 }
 
+/** Lists account-owned knowledge items by most recently updated first. */
 export async function listKnowledgeItems(ownerId: number) {
   const db = await requireDatabase();
   return db.select().from(knowledgeItems).where(eq(knowledgeItems.ownerId, ownerId)).orderBy(desc(knowledgeItems.updatedAt));
@@ -42,6 +53,7 @@ function escapeLikeTerm(term: string) {
   return term.replace(/[\\%_]/g, "\\$&");
 }
 
+/** Searches owned item fields and items connected by an owned link-label match. */
 export async function searchKnowledgeItems(ownerId: number, term: string, limit = 30) {
   const db = await requireDatabase();
   const pattern = `%${escapeLikeTerm(term)}%`;
@@ -66,6 +78,7 @@ export async function searchKnowledgeItems(ownerId: number, term: string, limit 
     .limit(limit);
 }
 
+/** Creates an owned item and writes the resulting activity event. */
 export async function createKnowledgeItem(ownerId: number, input: KnowledgeInput) {
   const db = await requireDatabase();
   const result = await db.insert(knowledgeItems).values({ ownerId, ...input });
@@ -75,6 +88,7 @@ export async function createKnowledgeItem(ownerId: number, input: KnowledgeInput
   return item;
 }
 
+/** Updates an owned item; foreign or absent records return `undefined`. */
 export async function updateKnowledgeItem(ownerId: number, id: number, patch: Partial<KnowledgeInput>) {
   const db = await requireDatabase();
   if (!await getOwnedKnowledgeItem(ownerId, id)) return undefined;
@@ -84,6 +98,7 @@ export async function updateKnowledgeItem(ownerId: number, id: number, patch: Pa
   return item;
 }
 
+/** Deletes an owned item and records the deletion. */
 export async function removeKnowledgeItem(ownerId: number, id: number) {
   const db = await requireDatabase();
   const item = await getOwnedKnowledgeItem(ownerId, id);
@@ -93,17 +108,20 @@ export async function removeKnowledgeItem(ownerId: number, id: number) {
   return item;
 }
 
+/** Lists directed links whose records belong to `ownerId`. */
 export async function listKnowledgeLinks(ownerId: number) {
   const db = await requireDatabase();
   return db.select().from(knowledgeLinks).where(eq(knowledgeLinks.ownerId, ownerId)).orderBy(desc(knowledgeLinks.createdAt));
 }
 
+/** Returns a graph link only when it belongs to `ownerId`. */
 export async function getOwnedKnowledgeLink(ownerId: number, id: number) {
   const db = await requireDatabase();
   const rows = await db.select().from(knowledgeLinks).where(and(eq(knowledgeLinks.id, id), eq(knowledgeLinks.ownerId, ownerId))).limit(1);
   return rows[0];
 }
 
+/** Creates a unique owned link after validating both endpoints and duplicate absence. */
 export async function createKnowledgeLink(ownerId: number, input: KnowledgeLinkInput) {
   const db = await requireDatabase();
   const [fromItem, toItem] = await Promise.all([
@@ -124,6 +142,7 @@ export async function createKnowledgeLink(ownerId: number, input: KnowledgeLinkI
   return link;
 }
 
+/** Updates the label of an owned link and writes an activity event. */
 export async function updateKnowledgeLink(ownerId: number, id: number, label: string | null) {
   const db = await requireDatabase();
   if (!await getOwnedKnowledgeLink(ownerId, id)) return undefined;
@@ -133,6 +152,7 @@ export async function updateKnowledgeLink(ownerId: number, id: number, label: st
   return link;
 }
 
+/** Deletes an owned link and records its former endpoint metadata. */
 export async function removeKnowledgeLink(ownerId: number, id: number) {
   const db = await requireDatabase();
   const link = await getOwnedKnowledgeLink(ownerId, id);

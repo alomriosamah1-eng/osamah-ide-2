@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Protected tRPC contract for projects, virtual workspace files, tasks, and
+ * activity. Input schemas bound payload size and normalize relative paths; all persistence
+ * calls derive ownership from `ctx.user.id`, never from a client-supplied owner identifier.
+ */
+
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
@@ -39,6 +45,7 @@ const fileInput = z.object({
   content: nullableText,
 });
 
+/** Account-scoped workspace API grouped by project, file, task, and activity resources. */
 export const workspaceRouter = router({
   project: router({
     list: protectedProcedure.query(({ ctx }) => listProjects(ctx.user.id)),

@@ -1,7 +1,12 @@
+/**
+ * @fileoverview Authenticated tRPC contract for the active account's UI preferences.
+ */
+
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc.js";
 import { getPreferences, updatePreferences } from "./db.js";
 
+/** Exposes preference reads and validated partial updates strictly for `ctx.user`. */
 export const preferencesRouter = router({
   get: protectedProcedure.query(({ ctx }) => getPreferences(ctx.user.id)),
   update: protectedProcedure

@@ -1,7 +1,14 @@
+/**
+ * @fileoverview Server-only HTTP adapter for an already-running embedded OpenCode runtime.
+ * It discovers actual provider models and forwards session/permission operations; it never
+ * supplies a default model, credentials, or browser-owned execution context.
+ */
+
 import { embeddedOpenCodeStatus } from "./embeddedRuntime.js";
 
 type JsonRecord = Record<string, unknown>;
 
+/** Normalized enabled-model record returned by the embedded OpenCode API. */
 export type OpenCodeModel = {
   id: string;
   providerID: string;
@@ -10,21 +17,25 @@ export type OpenCodeModel = {
   supportsTools: boolean;
 };
 
+/** Renderable text message normalized from OpenCode session output. */
 export type OpenCodeConversationMessage = {
   id: string;
   role: "user" | "assistant";
   text: string;
 };
 
+/** Permission request belonging to one OpenCode session. */
 export type OpenCodePermissionRequest = {
   id: string;
   label: string;
 };
 
+/** Minimal session identifier returned after an accepted OpenCode session creation. */
 export type OpenCodeSession = {
   id: string;
 };
 
+/** Expected availability or protocol error raised by the embedded OpenCode gateway. */
 export class OpenCodeGatewayError extends Error {
   constructor(message: string, readonly status?: number) {
     super(message);
@@ -71,6 +82,7 @@ async function requestOpenCode<T>(path: string, init?: RequestInit): Promise<T> 
   return payload as T;
 }
 
+/** Safely projects untrusted OpenCode model JSON into UI-safe model selections. */
 export function mapOpenCodeModels(payload: unknown): OpenCodeModel[] {
   const list = isRecord(payload) && Array.isArray(payload.data) ? payload.data : [];
   return list.flatMap(item => {
@@ -88,13 +100,16 @@ export function mapOpenCodeModels(payload: unknown): OpenCodeModel[] {
   });
 }
 
+/** Fetches actually enabled OpenCode models; an empty result is a valid unconfigured state. */
 export async function listOpenCodeModels() {
   const payload = await requestOpenCode<unknown>("/api/model");
   return mapOpenCodeModels(payload);
 }
 
+/** Server-validated model selection passed to a new OpenCode session. */
 export type OpenCodeModelSelection = Pick<OpenCodeModel, "id" | "providerID" | "variant">;
 
+/** Creates a runtime session, optionally with a caller-selected discovered model. */
 export async function createOpenCodeSession(model?: OpenCodeModelSelection) {
   const payload = await requestOpenCode<unknown>("/api/session", {
     method: "POST",
@@ -108,6 +123,7 @@ export async function createOpenCodeSession(model?: OpenCodeModelSelection) {
   return { id: session.id } satisfies OpenCodeSession;
 }
 
+/** Queues a complete server-built prompt for an existing runtime session. */
 export async function promptOpenCodeSession(sessionID: string, text: string) {
   const payload = await requestOpenCode<unknown>(`/api/session/${encodeURIComponent(sessionID)}/prompt`, {
     method: "POST",
@@ -116,10 +132,12 @@ export async function promptOpenCodeSession(sessionID: string, text: string) {
   return unwrapData(payload);
 }
 
+/** Waits until an OpenCode session reports completion. */
 export async function waitForOpenCodeSession(sessionID: string) {
   await requestOpenCode<void>(`/api/session/${encodeURIComponent(sessionID)}/wait`, { method: "POST" });
 }
 
+/** Extracts only nonempty user/assistant text from an OpenCode message response. */
 export function mapOpenCodeMessages(payload: unknown): OpenCodeConversationMessage[] {
   const messages = isRecord(payload) && Array.isArray(payload.data) ? payload.data : Array.isArray(payload) ? payload : [];
   return messages.flatMap((entry, index) => {
@@ -139,11 +157,13 @@ export function mapOpenCodeMessages(payload: unknown): OpenCodeConversationMessa
   });
 }
 
+/** Lists normalized messages for the requested OpenCode session. */
 export async function listOpenCodeMessages(sessionID: string) {
   const payload = await requestOpenCode<unknown>(`/api/session/${encodeURIComponent(sessionID)}/message?order=asc`);
   return mapOpenCodeMessages(payload);
 }
 
+/** Filters runtime permission data to requests that belong to the specified session. */
 export function mapOpenCodePermissions(payload: unknown, sessionID: string): OpenCodePermissionRequest[] {
   const requests = isRecord(payload) && Array.isArray(payload.data) ? payload.data : [];
   return requests.flatMap((entry, index) => {
@@ -156,11 +176,13 @@ export function mapOpenCodePermissions(payload: unknown, sessionID: string): Ope
   });
 }
 
+/** Lists pending permission requests associated with a runtime session. */
 export async function listOpenCodePermissions(sessionID: string) {
   const payload = await requestOpenCode<unknown>("/api/permission/request");
   return mapOpenCodePermissions(payload, sessionID);
 }
 
+/** Submits a server-authorized reply to one pending OpenCode permission request. */
 export async function replyToOpenCodePermission(sessionID: string, requestID: string, reply: "once" | "always" | "reject", message?: string) {
   await requestOpenCode<void>(`/api/session/${encodeURIComponent(sessionID)}/permission/${encodeURIComponent(requestID)}/reply`, {
     method: "POST",

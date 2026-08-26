@@ -1,3 +1,12 @@
+/**
+ * @fileoverview Root tRPC contract for Osamah IDE.
+ *
+ * The router composes application domains and exposes the local-account lifecycle. Domain
+ * routers own their procedures and use `protectedProcedure` for account-scoped data; the
+ * public local-auth procedures validate the browser account key and establish a signed
+ * HTTP-only session only after server-side verification.
+ */
+
 import { COOKIE_NAME } from "@shared/const";
 import { TRPCError } from "@trpc/server";
 import { createHash } from "node:crypto";
@@ -31,6 +40,10 @@ import { secondBrainRouter } from "./secondbrain/router";
 import { theiaRouter } from "./theia/router";
 import { workspaceRouter } from "./workspace/router";
 
+/**
+ * Application RPC root that groups system, product-domain, integration, and authentication
+ * contracts under `/api/trpc`.
+ */
 export const appRouter = router({
     // if you need to use socket.io, read and register route in server/_core/index.ts, all api should start with '/api/' so that the gateway can route correctly
   system: systemRouter,
@@ -149,4 +162,5 @@ export const appRouter = router({
   // }),
 });
 
+/** Inferred client/server type for the complete application RPC contract. */
 export type AppRouter = typeof appRouter;

@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Protected engine-readiness and server-context contract. It reports only
+ * observed source/runtime/model state and builds OpenCode context from account-owned data;
+ * browser-provided workspace context is never trusted for execution.
+ */
+
 import { access } from "node:fs/promises";
 import { constants } from "node:fs";
 import { resolve } from "node:path";
@@ -12,6 +18,7 @@ import { embeddedTheiaStatus } from "../theia/embeddedRuntime";
 import { listProjects, listTasks } from "../workspace/db";
 
 const sectionInput = z.enum(["dashboard", "programming", "presentations", "mind", "settings"]);
+/** Sections that can be represented in a server-built agent workspace prompt. */
 export type AgentWorkspaceSection = z.infer<typeof sectionInput>;
 
 async function exists(path: string) {
@@ -43,6 +50,7 @@ async function secondBrainEngineStatus() {
   };
 }
 
+/** Aggregates truthful readiness state for the approved embedded engine sources. */
 export async function buildEngineStatus() {
   const [openCode, theia, presenton, secondBrain] = await Promise.all([
     embeddedOpenCodeStatus(),
@@ -99,6 +107,7 @@ export async function buildEngineStatus() {
   ];
 }
 
+/** Builds a server-owned prompt prefix with account counts and observed engine readiness. */
 export async function buildAgentWorkspacePrompt(ownerId: number, section: AgentWorkspaceSection, text: string) {
   const [engines, projects, tasks, knowledgeItems, presentations] = await Promise.all([
     buildEngineStatus(),
@@ -121,6 +130,7 @@ export async function buildAgentWorkspacePrompt(ownerId: number, section: AgentW
   ].join("\n");
 }
 
+/** Protected status and read-only context endpoints consumed by the agent panel. */
 export const enginesRouter = router({
   status: protectedProcedure.query(async () => ({ engines: await buildEngineStatus() })),
   context: protectedProcedure.input(z.object({ section: sectionInput })).query(async ({ ctx, input }) => {

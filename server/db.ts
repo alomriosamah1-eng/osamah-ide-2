@@ -1,3 +1,11 @@
+/**
+ * @fileoverview Account persistence boundary for the application-owned identity flows.
+ *
+ * This module creates the database connection lazily for local tooling, persists OAuth
+ * users, and manages the metadata associated with a browser-local account. Passwords and
+ * recovery answers arrive here only as hashes; callers are responsible for hashing them.
+ */
+
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/mysql2";
 import { InsertUser, localAccounts, users } from "../drizzle/schema";
@@ -5,7 +13,7 @@ import { ENV } from './_core/env';
 
 let _db: ReturnType<typeof drizzle> | null = null;
 
-// Lazily create the drizzle instance so local tooling can run without a DB.
+/** Returns the shared Drizzle client, or `null` when the database is unavailable. */
 export async function getDb() {
   if (!_db && process.env.DATABASE_URL) {
     try {
@@ -18,6 +26,7 @@ export async function getDb() {
   return _db;
 }
 
+/** Creates or refreshes the canonical user row for a trusted OAuth identity. */
 export async function upsertUser(user: InsertUser): Promise<void> {
   if (!user.openId) {
     throw new Error("User openId is required for upsert");
@@ -77,6 +86,7 @@ export async function upsertUser(user: InsertUser): Promise<void> {
   }
 }
 
+/** Looks up a user by the provider or local-derived `openId`. */
 export async function getUserByOpenId(openId: string) {
   const db = await getDb();
   if (!db) {
@@ -89,6 +99,7 @@ export async function getUserByOpenId(openId: string) {
   return result.length > 0 ? result[0] : undefined;
 }
 
+/** Looks up the application user that owns a verified session. */
 export async function getUserById(id: number) {
   const db = await getDb();
   if (!db) return undefined;
@@ -96,6 +107,7 @@ export async function getUserById(id: number) {
   return result[0];
 }
 
+/** Finds a local-account record by its optional normalized email address. */
 export async function getLocalAccountByEmail(email: string) {
   const db = await getDb();
   if (!db) return undefined;
@@ -108,6 +120,7 @@ export async function getLocalAccountByEmail(email: string) {
   return result[0];
 }
 
+/** Finds the local account bound to the non-secret browser account key. */
 export async function getLocalAccountByKey(accountKey: string) {
   const db = await getDb();
   if (!db) return undefined;
@@ -120,6 +133,11 @@ export async function getLocalAccountByKey(accountKey: string) {
   return result[0];
 }
 
+/**
+ * Creates the user and local-account records atomically.
+ *
+ * `passwordHash` and `recoveryAnswerHash` must already be derived by `localAuth`.
+ */
 export async function createLocalAccount(input: {
   openId: string;
   accountKey: string;
@@ -150,6 +168,7 @@ export async function createLocalAccount(input: {
   });
 }
 
+/** Replaces a verified user's password hash and records a new sign-in timestamp. */
 export async function updateLocalAccountPassword(userId: number, passwordHash: string) {
   const db = await getDb();
   if (!db) throw new Error("Database is unavailable.");
@@ -157,16 +176,24 @@ export async function updateLocalAccountPassword(userId: number, passwordHash: s
   await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, userId));
 }
 
+/** Records successful local authentication without changing any profile data. */
 export async function touchLocalUser(userId: number) {
   const db = await getDb();
   if (!db) throw new Error("Database is unavailable.");
   await db.update(users).set({ lastSignedIn: new Date() }).where(eq(users.id, userId));
 }
 
+/** Produces the case-insensitive canonical form used for local email uniqueness checks. */
 export function normalizeLocalEmail(email: string) {
   return email.trim().toLowerCase();
 }
 
+/**
+ * Updates optional local-profile metadata for its authenticated owner.
+ *
+ * The function rejects an email already owned by a different local account and does not
+ * require the caller to provide both profile fields.
+ */
 export async function updateLocalAccountProfile(userId: number, input: { name?: string; email?: string }) {
   const db = await getDb();
   if (!db) throw new Error("Database is unavailable.");

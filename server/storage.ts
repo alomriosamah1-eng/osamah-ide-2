@@ -1,6 +1,10 @@
-// Preconfigured storage helpers for Manus WebDev templates
-// Uploads via Forge Server presigned URL to S3 (PUT direct).
-// Downloads return /manus-storage/{key} paths served via 307 redirect.
+/**
+ * @fileoverview Server-side Forge/S3 storage adapter.
+ *
+ * Uploads obtain a presigned URL with server-only credentials and then PUT bytes directly to
+ * object storage. Returned `/manus-storage/{key}` paths are routed download paths; callers
+ * remain responsible for application-level ownership and authorization of stored keys.
+ */
 
 import { ENV } from "./_core/env";
 
@@ -28,6 +32,13 @@ function appendHashSuffix(relKey: string): string {
   return `${relKey.slice(0, lastDot)}_${hash}${relKey.slice(lastDot)}`;
 }
 
+/**
+ * Uploads bytes under a collision-resistant key and returns its routed download path.
+ *
+ * @param relKey Relative logical key; leading slashes are removed before storage.
+ * @param data Bytes or text to upload.
+ * @param contentType MIME type sent to object storage.
+ */
 export async function storagePut(
   relKey: string,
   data: Buffer | Uint8Array | string,
@@ -71,11 +82,13 @@ export async function storagePut(
   return { key, url: `/manus-storage/${key}` };
 }
 
+/** Returns the normalized key and routed download path without performing a network request. */
 export async function storageGet(relKey: string): Promise<{ key: string; url: string }> {
   const key = normalizeKey(relKey);
   return { key, url: `/manus-storage/${key}` };
 }
 
+/** Requests a time-limited direct download URL through the server-side Forge credentials. */
 export async function storageGetSignedUrl(relKey: string): Promise<string> {
   const { forgeUrl, forgeKey } = getForgeConfig();
   const key = normalizeKey(relKey);

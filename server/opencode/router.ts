@@ -1,3 +1,9 @@
+/**
+ * @fileoverview OpenCode status and session contract. Read-only evidence remains public for
+ * configuration visibility; every stateful session operation requires a local account session
+ * plus the explicit server execution flag, and injects server-owned workspace context.
+ */
+
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
 import { router, publicProcedure, protectedProcedure } from "../_core/trpc";
@@ -47,6 +53,7 @@ const openCodeExecutionProcedure = protectedProcedure.use(async ({ next }) => {
  * Read-only runtime evidence. Startup and provider credentials remain outside
  * browser-initiated RPC calls until Osamah's server-side permission flow ships.
  */
+/** Gateway contract exposing status/models and policy-gated OpenCode session operations. */
 export const openCodeRouter = router({
   status: publicProcedure.query(async () => embeddedOpenCodeStatus()),
   source: publicProcedure.query(async () => readEmbeddedOpenCodePackage()),

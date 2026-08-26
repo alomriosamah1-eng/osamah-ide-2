@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Account-scoped persistence service for workspace projects, files, tasks,
+ * and activity records. Every lookup accepts an `ownerId` and queries ownership at the
+ * database boundary; router procedures must still use the matching authenticated user ID.
+ */
+
 import { and, asc, desc, eq } from "drizzle-orm";
 import { activityLog, projectFiles, projects, tasks } from "../../drizzle/schema";
 import { getDb } from "../db";
@@ -9,12 +15,14 @@ async function requireDatabase() {
   return db;
 }
 
+/** Returns a project only when its stored owner matches `ownerId`. */
 export async function getOwnedProject(ownerId: number, projectId: number) {
   const db = await requireDatabase();
   const result = await db.select().from(projects).where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId))).limit(1);
   return result[0];
 }
 
+/** Returns a file only through a project owned by `ownerId`. */
 export async function getOwnedFile(ownerId: number, fileId: number) {
   const db = await requireDatabase();
   const result = await db
@@ -26,12 +34,14 @@ export async function getOwnedFile(ownerId: number, fileId: number) {
   return result[0]?.file;
 }
 
+/** Returns a task only when its stored owner matches `ownerId`. */
 export async function getOwnedTask(ownerId: number, taskId: number) {
   const db = await requireDatabase();
   const result = await db.select().from(tasks).where(and(eq(tasks.id, taskId), eq(tasks.ownerId, ownerId))).limit(1);
   return result[0];
 }
 
+/** Appends an account-owned audit event for a completed workspace mutation. */
 export async function writeActivity(ownerId: number, action: string, entityType: string, entityId?: number, metadata?: Record<string, unknown>) {
   const db = await requireDatabase();
   await db.insert(activityLog).values({
@@ -43,11 +53,13 @@ export async function writeActivity(ownerId: number, action: string, entityType:
   });
 }
 
+/** Lists the caller's projects from most recently updated to oldest. */
 export async function listProjects(ownerId: number) {
   const db = await requireDatabase();
   return db.select().from(projects).where(eq(projects.ownerId, ownerId)).orderBy(desc(projects.updatedAt));
 }
 
+/** Creates an owned project and records its creation in the activity log. */
 export async function createProject(ownerId: number, input: { name: string; description?: string | null; language?: string | null }) {
   const db = await requireDatabase();
   const result = await db.insert(projects).values({ ownerId, name: input.name, description: input.description ?? null, language: input.language ?? null });
@@ -57,6 +69,7 @@ export async function createProject(ownerId: number, input: { name: string; desc
   return created;
 }
 
+/** Updates an existing owned project and records whether it was updated or archived. */
 export async function updateProject(ownerId: number, projectId: number, input: { name?: string; description?: string | null; language?: string | null; status?: "active" | "archived" }) {
   const db = await requireDatabase();
   const existing = await getOwnedProject(ownerId, projectId);
@@ -67,6 +80,7 @@ export async function updateProject(ownerId: number, projectId: number, input: {
   return updated;
 }
 
+/** Removes an owned project and records the deletion after the ownership check succeeds. */
 export async function removeProject(ownerId: number, projectId: number) {
   const db = await requireDatabase();
   const existing = await getOwnedProject(ownerId, projectId);
@@ -76,6 +90,7 @@ export async function removeProject(ownerId: number, projectId: number) {
   return existing;
 }
 
+/** Lists a project's files after confirming that the project belongs to `ownerId`. */
 export async function listFiles(ownerId: number, projectId: number) {
   const db = await requireDatabase();
   const project = await getOwnedProject(ownerId, projectId);
@@ -83,6 +98,7 @@ export async function listFiles(ownerId: number, projectId: number) {
   return db.select().from(projectFiles).where(eq(projectFiles.projectId, projectId)).orderBy(asc(projectFiles.path));
 }
 
+/** Creates an item inside an owned project, validating any parent directory first. */
 export async function createFile(ownerId: number, input: { projectId: number; parentId?: number | null; path: string; name: string; kind: "file" | "directory"; language?: string | null; content?: string | null }) {
   const db = await requireDatabase();
   const project = await getOwnedProject(ownerId, input.projectId);
@@ -99,6 +115,7 @@ export async function createFile(ownerId: number, input: { projectId: number; pa
   return file;
 }
 
+/** Saves or renames an owned file and records the corresponding activity event. */
 export async function updateFile(ownerId: number, fileId: number, input: { path?: string; name?: string; language?: string | null; content?: string | null }) {
   const db = await requireDatabase();
   const existing = await getOwnedFile(ownerId, fileId);
@@ -109,6 +126,7 @@ export async function updateFile(ownerId: number, fileId: number, input: { path?
   return updated;
 }
 
+/** Deletes an owned file after loading it through the ownership-scoped lookup. */
 export async function removeFile(ownerId: number, fileId: number) {
   const db = await requireDatabase();
   const existing = await getOwnedFile(ownerId, fileId);
@@ -118,12 +136,14 @@ export async function removeFile(ownerId: number, fileId: number) {
   return existing;
 }
 
+/** Lists account-owned tasks, optionally constrained to an owned project identifier. */
 export async function listTasks(ownerId: number, projectId?: number) {
   const db = await requireDatabase();
   const condition = projectId ? and(eq(tasks.ownerId, ownerId), eq(tasks.projectId, projectId)) : eq(tasks.ownerId, ownerId);
   return db.select().from(tasks).where(condition).orderBy(desc(tasks.updatedAt));
 }
 
+/** Creates an owned task, validating any linked project and deriving completion time. */
 export async function createTask(ownerId: number, input: { projectId?: number | null; title: string; description?: string | null; status?: "todo" | "in_progress" | "done"; dueAt?: Date | null }) {
   const db = await requireDatabase();
   if (input.projectId) {
@@ -139,6 +159,7 @@ export async function createTask(ownerId: number, input: { projectId?: number | 
   return task;
 }
 
+/** Updates an owned task and keeps `completedAt` consistent with the requested status. */
 export async function updateTask(ownerId: number, taskId: number, input: { projectId?: number | null; title?: string; description?: string | null; status?: "todo" | "in_progress" | "done"; dueAt?: Date | null }) {
   const db = await requireDatabase();
   const existing = await getOwnedTask(ownerId, taskId);
@@ -154,6 +175,7 @@ export async function updateTask(ownerId: number, taskId: number, input: { proje
   return updated;
 }
 
+/** Deletes an owned task and appends a deletion audit event. */
 export async function removeTask(ownerId: number, taskId: number) {
   const db = await requireDatabase();
   const existing = await getOwnedTask(ownerId, taskId);
@@ -163,6 +185,7 @@ export async function removeTask(ownerId: number, taskId: number) {
   return existing;
 }
 
+/** Lists the newest account-owned workspace activity events up to a validated limit. */
 export async function listActivity(ownerId: number, limit: number) {
   const db = await requireDatabase();
   return db.select().from(activityLog).where(eq(activityLog.ownerId, ownerId)).orderBy(desc(activityLog.createdAt)).limit(limit);

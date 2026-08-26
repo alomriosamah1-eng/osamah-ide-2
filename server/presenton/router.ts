@@ -1,3 +1,5 @@
+/** @fileoverview Read-only tRPC evidence endpoints for the vendored Presenton runtime. */
+
 import { router, protectedProcedure } from "../_core/trpc";
 import { embeddedPresentonStatus, readEmbeddedPresentonPackage } from "./embeddedRuntime";
 

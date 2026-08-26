@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Account-scoped presentation and slide persistence. Presentation generation
+ * is deliberately outside this module: it only owns stored drafts, slide ordering, and
+ * activity records after an authenticated mutation has succeeded.
+ */
+
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { presentationSlides, presentations } from "../../drizzle/schema";
 import { getDb } from "../db";
@@ -9,27 +15,32 @@ async function requireDatabase() {
   return db;
 }
 
+/** Checks that a requested order is a duplicate-free permutation of existing slide IDs. */
 export function isExactSlideOrder(existingIds: number[], requestedIds: number[]) {
   return existingIds.length === requestedIds.length && new Set(existingIds).size === existingIds.length && new Set(requestedIds).size === requestedIds.length && existingIds.every(id => requestedIds.includes(id));
 }
 
+/** Returns a presentation only when the stored owner matches `ownerId`. */
 export async function getOwnedPresentation(ownerId: number, presentationId: number) {
   const db = await requireDatabase();
   const rows = await db.select().from(presentations).where(and(eq(presentations.id, presentationId), eq(presentations.ownerId, ownerId))).limit(1);
   return rows[0];
 }
 
+/** Returns a slide only through a presentation owned by `ownerId`. */
 export async function getOwnedPresentationSlide(ownerId: number, slideId: number) {
   const db = await requireDatabase();
   const rows = await db.select({ slide: presentationSlides }).from(presentationSlides).innerJoin(presentations, eq(presentationSlides.presentationId, presentations.id)).where(and(eq(presentationSlides.id, slideId), eq(presentations.ownerId, ownerId))).limit(1);
   return rows[0]?.slide;
 }
 
+/** Lists the caller's presentations by most recently updated first. */
 export async function listPresentations(ownerId: number) {
   const db = await requireDatabase();
   return db.select().from(presentations).where(eq(presentations.ownerId, ownerId)).orderBy(desc(presentations.updatedAt));
 }
 
+/** Creates a stored draft presentation; it does not call a generation provider. */
 export async function createPresentation(ownerId: number, title: string) {
   const db = await requireDatabase();
   const result = await db.insert(presentations).values({ ownerId, title, status: "draft" });
@@ -39,6 +50,7 @@ export async function createPresentation(ownerId: number, title: string) {
   return created;
 }
 
+/** Updates title or persisted status for an owned presentation and writes activity. */
 export async function updatePresentation(ownerId: number, presentationId: number, patch: { title?: string; status?: "draft" | "generating" | "ready" | "failed" }) {
   const db = await requireDatabase();
   const existing = await getOwnedPresentation(ownerId, presentationId);
@@ -49,6 +61,7 @@ export async function updatePresentation(ownerId: number, presentationId: number
   return updated;
 }
 
+/** Removes an owned presentation and emits an audit event. */
 export async function removePresentation(ownerId: number, presentationId: number) {
   const db = await requireDatabase();
   const existing = await getOwnedPresentation(ownerId, presentationId);
@@ -58,6 +71,7 @@ export async function removePresentation(ownerId: number, presentationId: number
   return existing;
 }
 
+/** Lists slides for an owned presentation in their persisted display position. */
 export async function listPresentationSlides(ownerId: number, presentationId: number) {
   const db = await requireDatabase();
   const presentation = await getOwnedPresentation(ownerId, presentationId);
@@ -65,6 +79,7 @@ export async function listPresentationSlides(ownerId: number, presentationId: nu
   return db.select().from(presentationSlides).where(eq(presentationSlides.presentationId, presentationId)).orderBy(asc(presentationSlides.position));
 }
 
+/** Appends a stored slide to an owned presentation at the next available position. */
 export async function createPresentationSlide(ownerId: number, input: { presentationId: number; title?: string | null; content?: string | null; speakerNotes?: string | null }) {
   const db = await requireDatabase();
   const presentation = await getOwnedPresentation(ownerId, input.presentationId);
@@ -78,6 +93,7 @@ export async function createPresentationSlide(ownerId: number, input: { presenta
   return created;
 }
 
+/** Updates content metadata for a slide after an ownership-scoped lookup. */
 export async function updatePresentationSlide(ownerId: number, slideId: number, patch: { title?: string | null; content?: string | null; speakerNotes?: string | null }) {
   const db = await requireDatabase();
   const existing = await getOwnedPresentationSlide(ownerId, slideId);
@@ -88,6 +104,7 @@ export async function updatePresentationSlide(ownerId: number, slideId: number, 
   return updated;
 }
 
+/** Removes an owned slide and records the deletion against its presentation. */
 export async function removePresentationSlide(ownerId: number, slideId: number) {
   const db = await requireDatabase();
   const existing = await getOwnedPresentationSlide(ownerId, slideId);
@@ -97,6 +114,7 @@ export async function removePresentationSlide(ownerId: number, slideId: number) 
   return existing;
 }
 
+/** Reorders all and only the owned presentation's slides through a collision-safe two-step update. */
 export async function reorderPresentationSlides(ownerId: number, presentationId: number, orderedSlideIds: number[]) {
   const db = await requireDatabase();
   const slides = await listPresentationSlides(ownerId, presentationId);

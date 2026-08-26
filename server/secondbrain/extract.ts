@@ -1,3 +1,9 @@
+/**
+ * @fileoverview Server-side bridge to the approved Python task extractor.
+ * It transports plain note content over stdin and converts adapter failures to
+ * typed tRPC errors; it does not invoke a local language model.
+ */
+
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -8,6 +14,10 @@ type ExtractionOutput = { candidates: string[] };
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const adapterPath = path.join(projectRoot, "scripts", "secondbrain-extract-tasks.py");
 
+/**
+ * Runs the bounded Python extraction adapter and returns normalized task-candidate text.
+ * The five-second timeout and typed errors keep adapter faults out of router logic.
+ */
 export function extractSecondBrainTaskCandidates(content: string, includeVoicePatterns = false): Promise<string[]> {
   return new Promise((resolve, reject) => {
     const child = spawn("python3", [adapterPath], { cwd: projectRoot, stdio: ["pipe", "pipe", "pipe"] });

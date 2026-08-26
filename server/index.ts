@@ -1,3 +1,10 @@
+/**
+ * @fileoverview Production static-site server entry point.
+ *
+ * This separate entry serves the built client and falls back to `index.html` for client-side
+ * routing. Development API and Vite wiring run through `server/_core/index.ts` instead.
+ */
+
 import express from "express";
 import { createServer } from "http";
 import path from "path";
@@ -6,6 +13,7 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+/** Starts the production static server on the hosting-provided port. */
 async function startServer() {
   const app = express();
   const server = createServer(app);
