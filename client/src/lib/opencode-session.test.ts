@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { getOrCreateOpenCodeSession, isOpenCodeSessionCleanupBlocked } from "./opencode-session";
+import { getOrCreateOpenCodeSession, isOpenCodeSessionCleanupBlocked, reconcileOpenCodePendingPermissions, removeResolvedOpenCodePermission, shouldPollOpenCodeSessionPermissions } from "./opencode-session";
 
 describe("getOrCreateOpenCodeSession", () => {
   it("reuses the active session without creating an orphaned replacement", async () => {
@@ -20,5 +20,20 @@ describe("getOrCreateOpenCodeSession", () => {
     expect(isOpenCodeSessionCleanupBlocked("active-session", true)).toBe(true);
     expect(isOpenCodeSessionCleanupBlocked(null, true)).toBe(false);
     expect(isOpenCodeSessionCleanupBlocked("active-session", false)).toBe(false);
+  });
+
+  it("polls late permission requests only for an active session awaiting a response", () => {
+    expect(shouldPollOpenCodeSessionPermissions("active-session", true)).toBe(true);
+    expect(shouldPollOpenCodeSessionPermissions("active-session", false)).toBe(false);
+    expect(shouldPollOpenCodeSessionPermissions(null, true)).toBe(false);
+  });
+
+  it("reconciles empty, successful, and failed permission responses without losing a user decision", () => {
+    const current = [{ id: "permission-a", label: "write · note.md" }];
+
+    expect(reconcileOpenCodePendingPermissions(current, [])).toEqual([]);
+    expect(reconcileOpenCodePendingPermissions(current, undefined)).toEqual(current);
+    expect(removeResolvedOpenCodePermission(current, "permission-a")).toEqual([]);
+    expect(removeResolvedOpenCodePermission(current, "other-permission")).toEqual(current);
   });
 });

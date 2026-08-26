@@ -11,7 +11,7 @@ import { filterWorkspaceCommands, getWorkspaceCommands } from "@/lib/command-pal
 import { catalogFromEmbeddedOpenCode, getOpenCodeModel, getOpenCodeModelPlaceholder, initialOpenCodeCatalog } from "@/lib/opencode-contract";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
-import { getOrCreateOpenCodeSession, isOpenCodeSessionCleanupBlocked } from "@/lib/opencode-session";
+import { getOrCreateOpenCodeSession, isOpenCodeSessionCleanupBlocked, reconcileOpenCodePendingPermissions, removeResolvedOpenCodePermission, shouldPollOpenCodeSessionPermissions, type OpenCodePendingPermission } from "@/lib/opencode-session";
 import { getWorkspaceHelpEnginePhase } from "@/lib/workspace-help";
 import ServerSettingsView, { type PreferencePatch, type SavedPreferences } from "@/components/ServerSettingsView";
 import PresentationStudio from "@/components/PresentationStudio";
@@ -284,7 +284,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   const [selectedModelValue, setSelectedModelValue] = useState("");
   const [messages, setMessages] = useState<Array<{ role: "agent" | "user"; text: string; model?: string }>>([]);
   const [connectionMessage, setConnectionMessage] = useState("");
-  const [pendingPermissions, setPendingPermissions] = useState<Array<{ id: string; label: string }>>([]);
+  const [pendingPermissions, setPendingPermissions] = useState<OpenCodePendingPermission[]>([]);
   const [trackedSessionID, setTrackedSessionID] = useState<string | null>(null);
   const [awaitingAssistantResponse, setAwaitingAssistantResponse] = useState(false);
   const [sessionCleanupFailed, setSessionCleanupFailed] = useState(false);
@@ -304,6 +304,11 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     trackedSessionID ? { sessionID: trackedSessionID } : skipToken,
     { enabled: Boolean(trackedSessionID && awaitingAssistantResponse), refetchInterval: awaitingAssistantResponse ? 4_000 : false, retry: false },
   );
+  const shouldPollPermissions = shouldPollOpenCodeSessionPermissions(trackedSessionID, awaitingAssistantResponse);
+  const sessionPermissionsQuery = trpc.opencode.session.permissions.useQuery(
+    trackedSessionID ? { sessionID: trackedSessionID } : skipToken,
+    { enabled: shouldPollPermissions, refetchInterval: shouldPollPermissions ? 4_000 : false, retry: false },
+  );
   const modelCatalog = useMemo(() => {
     if (runtimeQuery.isLoading || modelsQuery.isFetching) return { runtime: "checking" as const, models: [] };
     if (runtimeQuery.data?.health !== "healthy") {
@@ -316,7 +321,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     [modelCatalog, selectedModelValue],
   );
   const isSessionCleanupBlocked = isOpenCodeSessionCleanupBlocked(activeSessionId.current, sessionCleanupFailed);
-  const isChatBusy = createSession.isPending || sendToSession.isPending || awaitingAssistantResponse || removeSession.isPending;
+  const isChatBusy = createSession.isPending || sendToSession.isPending || awaitingAssistantResponse || removeSession.isPending || replyPermission.isPending || pendingPermissions.length > 0;
   const canSendMessage = Boolean(draft.trim() && selectedModel && modelCatalog.runtime === "ready" && !isChatBusy && !isSessionCleanupBlocked);
   const sendAvailabilityMessage = isSessionCleanupBlocked
     ? (isAr ? "تعذر تنظيف جلسة القسم السابق. أعد محاولة إنهاء الجلسة قبل إرسال سياق جديد." : "The previous workspace session could not be cleaned up. Retry ending it before sending new context.")
@@ -443,6 +448,10 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     setConnectionMessage("");
   }, [awaitingAssistantResponse, lang, selectedModel, sessionMessagesQuery.data]);
 
+  useEffect(() => {
+    setPendingPermissions(current => reconcileOpenCodePendingPermissions(current, sessionPermissionsQuery.data));
+  }, [sessionPermissionsQuery.data]);
+
   const sendMessage = async (text = draft) => {
     const message = text.trim();
     if (!message) return;
@@ -487,7 +496,8 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     if (!activeSessionId.current) return;
     try {
       await replyPermission.mutateAsync({ sessionID: activeSessionId.current, requestID, reply });
-      setPendingPermissions(current => current.filter(permission => permission.id !== requestID));
+      setPendingPermissions(current => removeResolvedOpenCodePermission(current, requestID));
+      void sessionPermissionsQuery.refetch();
     } catch (error) {
       const detail = error instanceof Error ? error.message : "Unknown error";
       setConnectionMessage(isAr ? `تعذر تسجيل الموافقة: ${detail}` : `Permission response failed: ${detail}`);
