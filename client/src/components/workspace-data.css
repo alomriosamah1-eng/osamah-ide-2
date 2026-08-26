@@ -126,9 +126,17 @@
 .task-board-list { display: grid; gap: 0.5rem; }
 .task-board-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(7.6rem, auto) auto; align-items: center; gap: 0.6rem; border: 1px solid color-mix(in srgb, currentColor 10%, transparent); border-radius: 0.7rem; background: color-mix(in srgb, #10192c 54%, transparent); padding: 0.6rem 0.7rem; }
 .task-board-copy { display: grid; min-inline-size: 0; gap: 0.18rem; }
-.task-board-copy strong, .task-board-copy span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.task-board-copy strong { font-size: 0.78rem; }
+.task-board-title-line { display: flex; min-inline-size: 0; align-items: center; gap: 0.42rem; }
+.task-board-copy strong, .task-board-copy > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-board-copy strong { min-inline-size: 0; flex: 1; font-size: 0.78rem; }
 .task-board-copy span { color: var(--muted-foreground, #8fa0bf); font-size: 0.69rem; }
+.task-title-edit-button, .task-title-edit-actions button { border: 1px solid color-mix(in srgb, #7ba1ff 42%, transparent); border-radius: 0.42rem; background: transparent; color: #a9c0ff; font: inherit; font-size: 0.67rem; padding: 0.28rem 0.42rem; }
+.task-title-edit-button:disabled, .task-title-edit-actions button:disabled { cursor: not-allowed; opacity: 0.48; }
+.task-title-edit-button:focus-visible, .task-title-edit-actions button:focus-visible { outline: 2px solid color-mix(in srgb, #7ba1ff 68%, transparent); outline-offset: 2px; }
+.task-title-edit { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.4rem; }
+.task-title-edit input { box-sizing: border-box; min-inline-size: 0; min-block-size: 2rem; inline-size: 100%; border: 1px solid color-mix(in srgb, #7ba1ff 45%, transparent); border-radius: 0.5rem; outline: 0; background: color-mix(in srgb, #10192c 72%, transparent); color: inherit; font: inherit; font-size: 0.74rem; padding-inline: 0.5rem; }
+.task-title-edit input:focus-visible { border-color: color-mix(in srgb, #7ba1ff 76%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, #5e8cff 22%, transparent); }
+.task-title-edit-actions { display: flex; align-items: center; gap: 0.3rem; }
 .task-board-row select { min-block-size: 2rem; border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: 0.5rem; background: color-mix(in srgb, #10192c 72%, transparent); color: inherit; padding-inline: 0.45rem; font: inherit; font-size: 0.72rem; }
 .task-remove-button { display: grid; inline-size: 2rem; block-size: 2rem; place-items: center; border: 1px solid color-mix(in srgb, #ff9da0 45%, transparent); border-radius: 0.5rem; background: transparent; color: #ff9da0; }
 .task-remove-button:disabled, .task-board-row select:disabled { cursor: not-allowed; opacity: 0.48; }
@@ -140,6 +148,8 @@
   .task-board-row { grid-template-columns: minmax(0, 1fr) auto; }
   .task-board-row select { grid-column: 1; }
   .task-remove-button { grid-column: 2; grid-row: 1 / span 2; }
+  .task-title-edit { grid-template-columns: 1fr; }
+  .task-title-edit-actions { justify-content: flex-end; }
 }
 
 .secondbrain-grid { grid-template-columns: minmax(13rem, 0.75fr) minmax(23rem, 1.55fr) minmax(15rem, 0.85fr); }

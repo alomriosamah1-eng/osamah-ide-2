@@ -16,6 +16,7 @@ import { shouldConfirmUnsavedFileTransition, shouldConfirmUnsavedKnowledgeTransi
 import { getWorkspaceHelpEnginePhase } from "@/lib/workspace-help";
 import { getWorkspaceTaskBoardPhase, nextWorkspaceTaskStatus, type WorkspaceTaskStatus } from "@/lib/workspace-tasks";
 import { canCreateWorkspaceTask } from "@/lib/workspace-task-create";
+import { canSaveWorkspaceTaskTitle } from "@/lib/workspace-task-title-edit";
 import ServerSettingsView, { type PreferencePatch, type SavedPreferences } from "@/components/ServerSettingsView";
 import PresentationStudio from "@/components/PresentationStudio";
 import "./opencode-model.css";
@@ -654,6 +655,8 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
   const completedTasks = tasks.filter(task => task.status === "done").length;
   const [taskDraftTitle, setTaskDraftTitle] = useState("");
   const [selectedTaskProjectId, setSelectedTaskProjectId] = useState("");
+  const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
+  const [taskTitleDraft, setTaskTitleDraft] = useState("");
   const [taskOperationError, setTaskOperationError] = useState<string | null>(null);
   const [taskOperationNotice, setTaskOperationNotice] = useState<string | null>(null);
   const taskBoardPhase = getWorkspaceTaskBoardPhase({ isLoading: tasksQuery.isLoading, isError: tasksQuery.isError, count: tasks.length });
@@ -675,6 +678,17 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
   const taskUpdateMutation = trpc.workspace.task.update.useMutation({
     onSuccess: async () => { setTaskOperationError(null); setTaskOperationNotice(null); await utils.workspace.task.list.invalidate(); await utils.workspace.activity.list.invalidate(); },
     onError: () => setTaskOperationError(isAr ? "تعذر تحديث حالة المهمة. حاول مجدداً." : "The task status could not be updated. Try again."),
+  });
+  const taskTitleUpdateMutation = trpc.workspace.task.update.useMutation({
+    onSuccess: async () => {
+      setTaskOperationError(null);
+      setTaskOperationNotice(isAr ? "حُفظ عنوان المهمة. ستظهر النسخة المحدثة بعد تحديث القائمة." : "The task title was saved and will appear after the list refreshes.");
+      setEditingTaskId(null);
+      setTaskTitleDraft("");
+      await utils.workspace.task.list.invalidate();
+      await utils.workspace.activity.list.invalidate();
+    },
+    onError: () => setTaskOperationError(isAr ? "تعذر حفظ عنوان المهمة. حاول مجدداً." : "The task title could not be saved. Try again."),
   });
   const taskRemoveMutation = trpc.workspace.task.remove.useMutation({
     onSuccess: async () => { setTaskOperationError(null); setTaskOperationNotice(null); await utils.workspace.task.list.invalidate(); await utils.workspace.activity.list.invalidate(); },
@@ -806,13 +820,32 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
         {taskBoardPhase === "ready" ? <div className="task-board-list">
           {tasks.slice(0, 8).map(task => {
             const isUpdating = taskUpdateMutation.isPending && taskUpdateMutation.variables?.id === task.id;
+            const isRenaming = taskTitleUpdateMutation.isPending && taskTitleUpdateMutation.variables?.id === task.id;
             const isRemoving = taskRemoveMutation.isPending && taskRemoveMutation.variables?.id === task.id;
+            const isEditing = editingTaskId === task.id;
+            const isBusy = isUpdating || isRenaming || isRemoving;
+            const canSaveTitle = isEditing && canSaveWorkspaceTaskTitle({ initialTitle: task.title, draftTitle: taskTitleDraft, isSaving: isRenaming });
             return <article className="task-board-row" key={task.id}>
-              <div className="task-board-copy"><strong>{task.title}</strong>{task.description ? <span>{task.description}</span> : null}</div>
-              <select aria-label={isAr ? `حالة المهمة ${task.title}` : `Status for ${task.title}`} value={task.status} disabled={isUpdating || isRemoving} onChange={event => taskUpdateMutation.mutate({ id: task.id, status: event.target.value as WorkspaceTaskStatus })}>
+              <div className="task-board-copy">
+                {isEditing ? <form className="task-title-edit" onSubmit={event => {
+                  event.preventDefault();
+                  if (!canSaveTitle) return;
+                  setTaskOperationError(null);
+                  setTaskOperationNotice(null);
+                  taskTitleUpdateMutation.mutate({ id: task.id, title: taskTitleDraft.trim() });
+                }}>
+                  <input aria-label={isAr ? `عنوان المهمة ${task.title}` : `Title for ${task.title}`} autoFocus dir={isAr ? "rtl" : "ltr"} maxLength={240} onChange={event => setTaskTitleDraft(event.target.value)} value={taskTitleDraft} />
+                  <span className="task-title-edit-actions">
+                    <button type="submit" disabled={!canSaveTitle}>{isRenaming ? (isAr ? "يجري الحفظ…" : "Saving…") : (isAr ? "حفظ" : "Save")}</button>
+                    <button type="button" disabled={isRenaming} onClick={() => { setEditingTaskId(null); setTaskTitleDraft(""); }}>{isAr ? "إلغاء" : "Cancel"}</button>
+                  </span>
+                </form> : <div className="task-board-title-line"><strong>{task.title}</strong><button type="button" className="task-title-edit-button" disabled={isBusy} onClick={() => { setTaskOperationError(null); setTaskOperationNotice(null); setEditingTaskId(task.id); setTaskTitleDraft(task.title); }}>{isAr ? "تحرير" : "Edit"}</button></div>}
+                {task.description ? <span>{task.description}</span> : null}
+              </div>
+              <select aria-label={isAr ? `حالة المهمة ${task.title}` : `Status for ${task.title}`} value={task.status} disabled={isBusy} onChange={event => taskUpdateMutation.mutate({ id: task.id, status: event.target.value as WorkspaceTaskStatus })}>
                 {(["todo", "in_progress", "done"] as WorkspaceTaskStatus[]).map(status => <option value={status} key={status}>{taskStatusLabel(status)}</option>)}
               </select>
-              <button type="button" className="task-remove-button" aria-label={isAr ? `حذف المهمة ${task.title}` : `Delete ${task.title}`} disabled={isUpdating || isRemoving} onClick={() => taskRemoveMutation.mutate({ id: task.id })}><Trash2 size={15} /></button>
+              <button type="button" className="task-remove-button" aria-label={isAr ? `حذف المهمة ${task.title}` : `Delete ${task.title}`} disabled={isBusy} onClick={() => taskRemoveMutation.mutate({ id: task.id })}><Trash2 size={15} /></button>
             </article>;
           })}
         </div> : null}
