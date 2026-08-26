@@ -41,6 +41,38 @@ export default function PresentationStudio({ lang }: { lang: Language }) {
   const slidesLoadError = selectedDeck && slidesQuery.isError ? getPresentationLoadErrorMessage("slides", lang, slidesQuery.error) : null;
   const presentonLoadError = presentonStatus.isError ? getPresentationLoadErrorMessage("presenton", lang, presentonStatus.error) : null;
 
+  // OpenCode integration inside presentation studio
+  const [opencodeSessionId, setOpencodeSessionId] = useState<string | null>(null);
+  const [opencodeDraft, setOpencodeDraft] = useState("");
+  const [opencodeResponse, setOpencodeResponse] = useState("");
+  const [opencodeBusy, setOpencodeBusy] = useState(false);
+  const createSession = trpc.opencode.session.create.useMutation({ onSuccess: d => setOpencodeSessionId(d.sessionID) });
+  const sendToSession = trpc.opencode.session.send.useMutation({ onSuccess: () => { setOpencodeBusy(false); setOpencodeDraft(""); } });
+  const msgQuery = trpc.opencode.session.messages.useQuery(opencodeSessionId ? { sessionID: opencodeSessionId } : skipToken, { enabled: Boolean(opencodeSessionId), retry: false });
+
+  const askOpenCode = async () => {
+    const text = opencodeDraft.trim();
+    if (!text) return;
+    setOpencodeBusy(true);
+    try {
+      let sid = opencodeSessionId;
+      if (!sid) {
+        const modelRes = await trpc.opencode.models.useQuery();
+        const discovered = modelRes.data ?? [];
+        const model = discovered.find((m: any) => m.providerID === "opencode" && m.id === "x-preview-f-free") ?? discovered[0];
+        if (!model) { setOpencodeResponse(isAr ? "لم يُكتشف نموذج OpenCode." : "No OpenCode model discovered."); setOpencodeBusy(false); return; }
+        const res = await createSession.mutateAsync({ model: { id: model.id, providerID: model.providerID, variant: model.variant } });
+        sid = res.sessionID;
+        setOpencodeSessionId(sid);
+      }
+      const contextText = `${isAr ? "العرض: " : "Deck: "}${selectedDeck?.title ?? "—"} | ${isAr ? "شريحة: " : "Slide: "}${selectedSlide?.title ?? "—"} | ${isAr ? "المحتوى: " : "Content: "}${selectedSlide?.content ?? "—"}`;
+      await sendToSession.mutateAsync({ sessionID: sid, text: text + "\n" + contextText, section: "presentations" });
+      setOpencodeResponse(isAr ? "تم إرسال السياق إلى OpenCode. تحقق من الرد أدناه." : "Context sent to OpenCode. Check response below.");
+    } catch (e: any) {
+      setOpencodeResponse(isAr ? "فشل الإرسال: " + (e.message ?? "") : "Send failed: " + (e.message ?? ""));
+    } finally { setOpencodeBusy(false); }
+  };
+
   useEffect(() => {
     const first = decksQuery.data?.[0];
     if (!selectedDeckId && first) setSelectedDeckId(first.id);
@@ -122,6 +154,15 @@ export default function PresentationStudio({ lang }: { lang: Language }) {
         {selectedDeck && selectedSlide ? <><div className="canvas-tools"><button type="button" onClick={addSlide} disabled={isMutating}><Plus size={14} /> {isAr ? "شريحة" : "Slide"}</button><button type="button" onClick={() => moveSlide(-1)} disabled={isMutating || selectedSlide.position === 0} aria-label={isAr ? "تحريك لأعلى" : "Move up"}>{isAr ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}</button><button type="button" onClick={() => moveSlide(1)} disabled={isMutating || selectedSlide.position === (slidesQuery.data?.length ?? 1) - 1} aria-label={isAr ? "تحريك لأسفل" : "Move down"}>{isAr ? <ChevronLeft size={15} /> : <ChevronRight size={15} />}</button><button type="button" className="danger-action" onClick={() => { if (confirmSlideTransition("delete-slide") && window.confirm(isAr ? "حذف هذه الشريحة؟" : "Delete this slide?")) removeSlide.mutate({ id: selectedSlide.id }); }} disabled={isMutating}><Trash2 size={14} /> {isAr ? "حذف" : "Delete"}</button><button type="button" className="save-action" onClick={saveSlide} disabled={isMutating || !hasSlideChanges}><Save size={14} /> {isAr ? "حفظ" : "Save"}</button></div><div className="presentation-editor-fields"><label>{isAr ? "عنوان الشريحة" : "Slide title"}<input value={draftTitle} onChange={event => setDraftTitle(event.target.value)} disabled={isMutating} /></label><label>{isAr ? "محتوى الشريحة" : "Slide content"}<textarea value={draftContent} onChange={event => setDraftContent(event.target.value)} disabled={isMutating} /></label></div><div className="speaker-notes"><button type="button" onClick={() => setNotesExpanded(expanded => !expanded)} aria-expanded={notesExpanded}><ChevronDown size={15} /> {isAr ? "ملاحظات المتحدث" : "Speaker notes"}</button>{notesExpanded ? <textarea value={draftNotes} onChange={event => setDraftNotes(event.target.value)} disabled={isMutating} aria-label={isAr ? "ملاحظات المتحدث" : "Speaker notes"} /> : null}</div></> : <div className="presentation-empty-workbench"><Presentation size={34} /><strong>{selectedDeck ? (isAr ? "اختر شريحة أو أنشئ واحدة" : "Select or create a slide") : (isAr ? "اختر عرضاً أو أنشئ عرضاً جديداً" : "Select or create a presentation")}</strong>{selectedDeck ? <button type="button" onClick={addSlide}>{isAr ? "إضافة شريحة" : "Add slide"}</button> : <button type="button" onClick={askForDeck}>{isAr ? "إنشاء عرض" : "Create presentation"}</button>}</div>}
         {actionError ? <p className="workspace-operation-error" role="alert"><CircleAlert size={15} /> {actionError.message}</p> : null}
       </section>
+      <aside className="opencode-integrated-panel glass-panel" dir={isAr ? "rtl" : "ltr"} aria-label={isAr ? "مساعد OpenCode للعروض" : "OpenCode assistant for presentations"}>
+        <div className="opencode-panel-header"><strong>{isAr ? "مساعد OpenCode" : "OpenCode Assistant"}</strong><span className="opencode-status">{opencodeSessionId ? (isAr ? "جلسة نشطة" : "Active session") : (isAr ? "لا جلسة" : "No session")}</span></div>
+        <div className="opencode-panel-body">
+          <textarea value={opencodeDraft} onChange={e => setOpencodeDraft(e.target.value)} disabled={opencodeBusy} rows={3} aria-label={isAr ? "رسالة للمساعد" : "Message to assistant"} placeholder={isAr ? "اسأل عن العرض أو الشريحة الحالية..." : "Ask about current deck or slide..."} />
+          <button type="button" onClick={askOpenCode} disabled={opencodeBusy || !opencodeDraft.trim()} className="opencode-send-btn">{opencodeBusy ? (isAr ? "جارٍ الإرسال…" : "Sending...") : (isAr ? "إرسال إلى OpenCode" : "Send to OpenCode")}</button>
+          {opencodeResponse ? <div className="opencode-response"><strong>{isAr ? "الرد / الحالة:" : "Response / Status:"}</strong> <span>{opencodeResponse}</span></div> : null}
+          {msgQuery.data?.messages && msgQuery.data.messages.length > 0 ? <div className="opencode-messages"><strong>{isAr ? "آخر الرسائل:" : "Latest messages:"}</strong><ul>{msgQuery.data.messages.map((m: any, i: number) => <li key={i}><strong>{m.role === "user" ? (isAr ? "أنت" : "You") : (isAr ? "المساعد" : "Assistant")}</strong>: {m.content?.slice?.(0, 200) ?? m.content}</li>)}</ul></div> : null}
+        </div>
+      </aside>
     </div>
   </div>;
 }
