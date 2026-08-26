@@ -117,8 +117,10 @@
 .task-board-note { margin: -0.1rem 0 0.85rem; color: var(--muted-foreground, #8fa0bf); font-size: 0.74rem; line-height: 1.6; }
 .task-board-create { display: grid; grid-template-columns: minmax(0, 1fr) minmax(9rem, 0.45fr) auto; align-items: end; gap: 0.6rem; margin-block-end: 0.8rem; padding: 0.7rem; border: 1px solid color-mix(in srgb, #5e8cff 25%, transparent); border-radius: 0.7rem; background: color-mix(in srgb, #5e8cff 6%, transparent); }
 .task-board-create label { display: grid; min-inline-size: 0; gap: 0.32rem; color: var(--muted-foreground, #8fa0bf); font-size: 0.68rem; }
-.task-board-create input, .task-board-create select { box-sizing: border-box; min-inline-size: 0; min-block-size: 2.15rem; inline-size: 100%; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 0.52rem; outline: 0; background: color-mix(in srgb, #10192c 76%, transparent); color: inherit; font: inherit; font-size: 0.74rem; padding-inline: 0.6rem; }
-.task-board-create input:focus-visible, .task-board-create select:focus-visible { border-color: color-mix(in srgb, #7ba1ff 76%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, #5e8cff 22%, transparent); }
+.task-board-create input, .task-board-create select, .task-board-create textarea { box-sizing: border-box; min-inline-size: 0; min-block-size: 2.15rem; inline-size: 100%; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 0.52rem; outline: 0; background: color-mix(in srgb, #10192c 76%, transparent); color: inherit; font: inherit; font-size: 0.74rem; padding-inline: 0.6rem; }
+.task-board-create textarea { min-block-size: 4.8rem; padding-block: 0.5rem; resize: vertical; line-height: 1.5; }
+.task-board-create-description { grid-column: 1 / -1; }
+.task-board-create input:focus-visible, .task-board-create select:focus-visible, .task-board-create textarea:focus-visible { border-color: color-mix(in srgb, #7ba1ff 76%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, #5e8cff 22%, transparent); }
 .task-board-create button { min-block-size: 2.15rem; border: 1px solid color-mix(in srgb, #7ba1ff 58%, transparent); border-radius: 0.52rem; background: color-mix(in srgb, #5e8cff 26%, transparent); color: #dce7ff; font: inherit; font-size: 0.74rem; padding-inline: 0.8rem; transition: transform 160ms var(--ease-out, ease-out), background 160ms var(--ease-out, ease-out); }
 .task-board-create button:not(:disabled):active { transform: scale(0.97); }
 .task-board-create button:disabled { cursor: not-allowed; opacity: 0.5; }
@@ -130,9 +132,9 @@
 .task-board-copy strong, .task-board-copy > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .task-board-copy strong { min-inline-size: 0; flex: 1; font-size: 0.78rem; }
 .task-board-copy span { color: var(--muted-foreground, #8fa0bf); font-size: 0.69rem; }
-.task-title-edit-button, .task-title-edit-actions button, .task-due-edit-button, .task-due-edit-actions button { border: 1px solid color-mix(in srgb, #7ba1ff 42%, transparent); border-radius: 0.42rem; background: transparent; color: #a9c0ff; font: inherit; font-size: 0.67rem; padding: 0.28rem 0.42rem; }
-.task-title-edit-button:disabled, .task-title-edit-actions button:disabled, .task-due-edit-button:disabled, .task-due-edit-actions button:disabled { cursor: not-allowed; opacity: 0.48; }
-.task-title-edit-button:focus-visible, .task-title-edit-actions button:focus-visible, .task-due-edit-button:focus-visible, .task-due-edit-actions button:focus-visible { outline: 2px solid color-mix(in srgb, #7ba1ff 68%, transparent); outline-offset: 2px; }
+.task-title-edit-button, .task-title-edit-actions button, .task-due-edit-button, .task-due-edit-actions button, .task-description-edit-button, .task-description-edit-actions button { border: 1px solid color-mix(in srgb, #7ba1ff 42%, transparent); border-radius: 0.42rem; background: transparent; color: #a9c0ff; font: inherit; font-size: 0.67rem; padding: 0.28rem 0.42rem; }
+.task-title-edit-button:disabled, .task-title-edit-actions button:disabled, .task-due-edit-button:disabled, .task-due-edit-actions button:disabled, .task-description-edit-button:disabled, .task-description-edit-actions button:disabled { cursor: not-allowed; opacity: 0.48; }
+.task-title-edit-button:focus-visible, .task-title-edit-actions button:focus-visible, .task-due-edit-button:focus-visible, .task-due-edit-actions button:focus-visible, .task-description-edit-button:focus-visible, .task-description-edit-actions button:focus-visible { outline: 2px solid color-mix(in srgb, #7ba1ff 68%, transparent); outline-offset: 2px; }
 .task-title-edit { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.4rem; }
 .task-title-edit input { box-sizing: border-box; min-inline-size: 0; min-block-size: 2rem; inline-size: 100%; border: 1px solid color-mix(in srgb, #7ba1ff 45%, transparent); border-radius: 0.5rem; outline: 0; background: color-mix(in srgb, #10192c 72%, transparent); color: inherit; font: inherit; font-size: 0.74rem; padding-inline: 0.5rem; }
 .task-title-edit input:focus-visible { border-color: color-mix(in srgb, #7ba1ff 76%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, #5e8cff 22%, transparent); }
@@ -143,6 +145,12 @@
 .task-due-edit input { box-sizing: border-box; min-inline-size: 0; min-block-size: 2rem; inline-size: 100%; border: 1px solid color-mix(in srgb, #7ba1ff 45%, transparent); border-radius: 0.5rem; outline: 0; background: color-mix(in srgb, #10192c 72%, transparent); color: inherit; font: inherit; font-size: 0.74rem; padding-inline: 0.5rem; }
 .task-due-edit input:focus-visible { border-color: color-mix(in srgb, #7ba1ff 76%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, #5e8cff 22%, transparent); }
 .task-due-edit-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; }
+.task-description-line { display: flex; min-inline-size: 0; align-items: flex-start; gap: 0.42rem; }
+.task-description-line > span { min-inline-size: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.task-description-edit { display: grid; gap: 0.4rem; }
+.task-description-edit textarea { box-sizing: border-box; min-block-size: 5.25rem; inline-size: 100%; border: 1px solid color-mix(in srgb, #7ba1ff 45%, transparent); border-radius: 0.5rem; outline: 0; background: color-mix(in srgb, #10192c 72%, transparent); color: inherit; font: inherit; font-size: 0.74rem; line-height: 1.5; padding: 0.5rem; resize: vertical; }
+.task-description-edit textarea:focus-visible { border-color: color-mix(in srgb, #7ba1ff 76%, transparent); box-shadow: 0 0 0 3px color-mix(in srgb, #5e8cff 22%, transparent); }
+.task-description-edit-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.3rem; }
 .task-board-row select { min-block-size: 2rem; border: 1px solid color-mix(in srgb, currentColor 15%, transparent); border-radius: 0.5rem; background: color-mix(in srgb, #10192c 72%, transparent); color: inherit; padding-inline: 0.45rem; font: inherit; font-size: 0.72rem; }
 .task-remove-button { display: grid; inline-size: 2rem; block-size: 2rem; place-items: center; border: 1px solid color-mix(in srgb, #ff9da0 45%, transparent); border-radius: 0.5rem; background: transparent; color: #ff9da0; }
 .task-remove-button:disabled, .task-board-row select:disabled { cursor: not-allowed; opacity: 0.48; }

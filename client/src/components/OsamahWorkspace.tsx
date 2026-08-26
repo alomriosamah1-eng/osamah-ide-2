@@ -18,6 +18,7 @@ import { getWorkspaceTaskBoardPhase, nextWorkspaceTaskStatus, type WorkspaceTask
 import { canCreateWorkspaceTask } from "@/lib/workspace-task-create";
 import { canSaveWorkspaceTaskTitle } from "@/lib/workspace-task-title-edit";
 import { canSaveWorkspaceTaskDueDate, formatWorkspaceTaskDueDate, getWorkspaceTaskDueDateInput, parseWorkspaceTaskDueDate } from "@/lib/workspace-task-due-date";
+import { canSaveWorkspaceTaskDescription } from "@/lib/workspace-task-description";
 import ServerSettingsView, { type PreferencePatch, type SavedPreferences } from "@/components/ServerSettingsView";
 import PresentationStudio from "@/components/PresentationStudio";
 import "./opencode-model.css";
@@ -655,11 +656,14 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
   const activeTasks = tasks.filter(task => task.status !== "done").length;
   const completedTasks = tasks.filter(task => task.status === "done").length;
   const [taskDraftTitle, setTaskDraftTitle] = useState("");
+  const [taskDraftDescription, setTaskDraftDescription] = useState("");
   const [selectedTaskProjectId, setSelectedTaskProjectId] = useState("");
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [taskTitleDraft, setTaskTitleDraft] = useState("");
   const [editingTaskDueId, setEditingTaskDueId] = useState<number | null>(null);
   const [taskDueDraft, setTaskDueDraft] = useState("");
+  const [editingTaskDescriptionId, setEditingTaskDescriptionId] = useState<number | null>(null);
+  const [taskDescriptionDraft, setTaskDescriptionDraft] = useState("");
   const [taskOperationError, setTaskOperationError] = useState<string | null>(null);
   const [taskOperationNotice, setTaskOperationNotice] = useState<string | null>(null);
   const taskBoardPhase = getWorkspaceTaskBoardPhase({ isLoading: tasksQuery.isLoading, isError: tasksQuery.isError, count: tasks.length });
@@ -668,6 +672,7 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
       setTaskOperationError(null);
       setTaskOperationNotice(isAr ? "حُفظت المهمة. ستظهر بعد تحديث القائمة." : "The task was saved and will appear after the list refreshes.");
       setTaskDraftTitle("");
+      setTaskDraftDescription("");
       setSelectedTaskProjectId("");
       await utils.workspace.task.list.invalidate();
       await utils.workspace.activity.list.invalidate();
@@ -703,6 +708,17 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
       await utils.workspace.activity.list.invalidate();
     },
     onError: () => setTaskOperationError(isAr ? "تعذر حفظ تاريخ الاستحقاق. حاول مجدداً." : "The task due date could not be saved. Try again."),
+  });
+  const taskDescriptionUpdateMutation = trpc.workspace.task.update.useMutation({
+    onSuccess: async () => {
+      setTaskOperationError(null);
+      setTaskOperationNotice(isAr ? "حُفظ وصف المهمة. ستظهر النسخة المحدثة بعد تحديث القائمة." : "The task description was saved and will appear after the list refreshes.");
+      setEditingTaskDescriptionId(null);
+      setTaskDescriptionDraft("");
+      await utils.workspace.task.list.invalidate();
+      await utils.workspace.activity.list.invalidate();
+    },
+    onError: () => setTaskOperationError(isAr ? "تعذر حفظ وصف المهمة. حاول مجدداً." : "The task description could not be saved. Try again."),
   });
   const taskRemoveMutation = trpc.workspace.task.remove.useMutation({
     onSuccess: async () => { setTaskOperationError(null); setTaskOperationNotice(null); await utils.workspace.task.list.invalidate(); await utils.workspace.activity.list.invalidate(); },
@@ -802,6 +818,7 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
           setTaskOperationNotice(null);
           taskCreateMutation.mutate({
             title: taskDraftTitle.trim(),
+            description: taskDraftDescription.trim() || null,
             projectId: selectedTaskProjectId ? Number(selectedTaskProjectId) : null,
             status: "todo",
           });
@@ -825,6 +842,10 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
               {projects.map(project => <option key={project.id} value={String(project.id)}>{project.name}</option>)}
             </select>
           </label>
+          <label className="task-board-create-description">
+            <span>{isAr ? "الوصف (اختياري)" : "Description (optional)"}</span>
+            <textarea aria-label={isAr ? "وصف المهمة الجديدة" : "Description for the new task"} dir={isAr ? "rtl" : "ltr"} maxLength={100_000} onChange={(event) => setTaskDraftDescription(event.target.value)} placeholder={isAr ? "أضف السياق أو معيار الإنجاز" : "Add context or a completion criterion"} value={taskDraftDescription} />
+          </label>
           <button type="submit" disabled={!canSubmitTask}>{taskCreateMutation.isPending ? (isAr ? "يجري الحفظ…" : "Saving…") : (isAr ? "إضافة مهمة" : "Add task")}</button>
         </form>
         {taskOperationNotice ? <p className="task-board-notice" role="status">{taskOperationNotice}</p> : null}
@@ -836,12 +857,15 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
             const isUpdating = taskUpdateMutation.isPending && taskUpdateMutation.variables?.id === task.id;
             const isRenaming = taskTitleUpdateMutation.isPending && taskTitleUpdateMutation.variables?.id === task.id;
             const isUpdatingDue = taskDueUpdateMutation.isPending && taskDueUpdateMutation.variables?.id === task.id;
+            const isUpdatingDescription = taskDescriptionUpdateMutation.isPending && taskDescriptionUpdateMutation.variables?.id === task.id;
             const isRemoving = taskRemoveMutation.isPending && taskRemoveMutation.variables?.id === task.id;
             const isEditing = editingTaskId === task.id;
             const isEditingDue = editingTaskDueId === task.id;
-            const isBusy = isUpdating || isRenaming || isUpdatingDue || isRemoving;
+            const isEditingDescription = editingTaskDescriptionId === task.id;
+            const isBusy = isUpdating || isRenaming || isUpdatingDue || isUpdatingDescription || isRemoving;
             const canSaveTitle = isEditing && canSaveWorkspaceTaskTitle({ initialTitle: task.title, draftTitle: taskTitleDraft, isSaving: isRenaming });
             const canSaveDueDate = isEditingDue && canSaveWorkspaceTaskDueDate({ initialDueAt: task.dueAt, draftDate: taskDueDraft, isSaving: isUpdatingDue });
+            const canSaveDescription = isEditingDescription && canSaveWorkspaceTaskDescription({ initialDescription: task.description, draftDescription: taskDescriptionDraft, isSaving: isUpdatingDescription });
             return <article className="task-board-row" key={task.id}>
               <div className="task-board-copy">
                 {isEditing ? <form className="task-title-edit" onSubmit={event => {
@@ -856,8 +880,21 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
                     <button type="submit" disabled={!canSaveTitle}>{isRenaming ? (isAr ? "يجري الحفظ…" : "Saving…") : (isAr ? "حفظ" : "Save")}</button>
                     <button type="button" disabled={isRenaming} onClick={() => { setEditingTaskId(null); setTaskTitleDraft(""); }}>{isAr ? "إلغاء" : "Cancel"}</button>
                   </span>
-                </form> : <div className="task-board-title-line"><strong>{task.title}</strong><button type="button" className="task-title-edit-button" disabled={isBusy || isEditingDue} onClick={() => { setTaskOperationError(null); setTaskOperationNotice(null); setEditingTaskId(task.id); setTaskTitleDraft(task.title); }}>{isAr ? "تحرير" : "Edit"}</button></div>}
-                {task.description ? <span>{task.description}</span> : null}
+                </form> : <div className="task-board-title-line"><strong>{task.title}</strong><button type="button" className="task-title-edit-button" disabled={isBusy || isEditingDue || isEditingDescription} onClick={() => { setTaskOperationError(null); setTaskOperationNotice(null); setEditingTaskId(task.id); setTaskTitleDraft(task.title); }}>{isAr ? "تحرير" : "Edit"}</button></div>}
+                {isEditingDescription ? <form className="task-description-edit" onSubmit={event => {
+                  event.preventDefault();
+                  if (!canSaveDescription) return;
+                  setTaskOperationError(null);
+                  setTaskOperationNotice(null);
+                  taskDescriptionUpdateMutation.mutate({ id: task.id, description: taskDescriptionDraft.trim() || null });
+                }}>
+                  <textarea aria-label={isAr ? `وصف المهمة ${task.title}` : `Description for ${task.title}`} autoFocus dir={isAr ? "rtl" : "ltr"} maxLength={100_000} onChange={event => setTaskDescriptionDraft(event.target.value)} value={taskDescriptionDraft} />
+                  <span className="task-description-edit-actions">
+                    <button type="submit" disabled={!canSaveDescription}>{isUpdatingDescription ? (isAr ? "يجري الحفظ…" : "Saving…") : (isAr ? "حفظ" : "Save")}</button>
+                    <button type="button" disabled={isUpdatingDescription || !taskDescriptionDraft} onClick={() => setTaskDescriptionDraft("")}>{isAr ? "مسح" : "Clear"}</button>
+                    <button type="button" disabled={isUpdatingDescription} onClick={() => { setEditingTaskDescriptionId(null); setTaskDescriptionDraft(""); }}>{isAr ? "إلغاء" : "Cancel"}</button>
+                  </span>
+                </form> : <div className="task-description-line"><span>{task.description ?? (isAr ? "بلا وصف" : "No description")}</span><button type="button" className="task-description-edit-button" disabled={isBusy || isEditing || isEditingDue} onClick={() => { setTaskOperationError(null); setTaskOperationNotice(null); setEditingTaskDescriptionId(task.id); setTaskDescriptionDraft(task.description ?? ""); }}>{isAr ? "وصف" : "Description"}</button></div>}
                 {isEditingDue ? <form className="task-due-edit" onSubmit={event => {
                   event.preventDefault();
                   if (!canSaveDueDate) return;
@@ -872,12 +909,12 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
                     <button type="button" disabled={isUpdatingDue || !taskDueDraft} onClick={() => setTaskDueDraft("")}>{isAr ? "مسح" : "Clear"}</button>
                     <button type="button" disabled={isUpdatingDue} onClick={() => { setEditingTaskDueId(null); setTaskDueDraft(""); }}>{isAr ? "إلغاء" : "Cancel"}</button>
                   </span>
-                </form> : <div className="task-due-line"><span>{task.dueAt ? `${isAr ? "الاستحقاق: " : "Due: "}${formatWorkspaceTaskDueDate(task.dueAt, lang)}` : (isAr ? "بلا تاريخ استحقاق" : "No due date")}</span><button type="button" className="task-due-edit-button" disabled={isBusy || isEditing} onClick={() => { setTaskOperationError(null); setTaskOperationNotice(null); setEditingTaskDueId(task.id); setTaskDueDraft(getWorkspaceTaskDueDateInput(task.dueAt)); }}>{isAr ? "تاريخ" : "Date"}</button></div>}
+                </form> : <div className="task-due-line"><span>{task.dueAt ? `${isAr ? "الاستحقاق: " : "Due: "}${formatWorkspaceTaskDueDate(task.dueAt, lang)}` : (isAr ? "بلا تاريخ استحقاق" : "No due date")}</span><button type="button" className="task-due-edit-button" disabled={isBusy || isEditing || isEditingDescription} onClick={() => { setTaskOperationError(null); setTaskOperationNotice(null); setEditingTaskDueId(task.id); setTaskDueDraft(getWorkspaceTaskDueDateInput(task.dueAt)); }}>{isAr ? "تاريخ" : "Date"}</button></div>}
               </div>
-              <select aria-label={isAr ? `حالة المهمة ${task.title}` : `Status for ${task.title}`} value={task.status} disabled={isBusy || isEditing || isEditingDue} onChange={event => taskUpdateMutation.mutate({ id: task.id, status: event.target.value as WorkspaceTaskStatus })}>
+              <select aria-label={isAr ? `حالة المهمة ${task.title}` : `Status for ${task.title}`} value={task.status} disabled={isBusy || isEditing || isEditingDue || isEditingDescription} onChange={event => taskUpdateMutation.mutate({ id: task.id, status: event.target.value as WorkspaceTaskStatus })}>
                 {(["todo", "in_progress", "done"] as WorkspaceTaskStatus[]).map(status => <option value={status} key={status}>{taskStatusLabel(status)}</option>)}
               </select>
-              <button type="button" className="task-remove-button" aria-label={isAr ? `حذف المهمة ${task.title}` : `Delete ${task.title}`} disabled={isBusy || isEditing || isEditingDue} onClick={() => taskRemoveMutation.mutate({ id: task.id })}><Trash2 size={15} /></button>
+              <button type="button" className="task-remove-button" aria-label={isAr ? `حذف المهمة ${task.title}` : `Delete ${task.title}`} disabled={isBusy || isEditing || isEditingDue || isEditingDescription} onClick={() => taskRemoveMutation.mutate({ id: task.id })}><Trash2 size={15} /></button>
             </article>;
           })}
         </div> : null}
