@@ -14,7 +14,7 @@ import { trpc } from "@/lib/trpc";
 import { getOrCreateOpenCodeSession, isOpenCodeSessionCleanupBlocked, reconcileOpenCodePendingPermissions, removeResolvedOpenCodePermission, shouldPollOpenCodeSessionPermissions, type OpenCodePendingPermission } from "@/lib/opencode-session";
 import { shouldConfirmUnsavedFileTransition, shouldConfirmUnsavedKnowledgeTransition, type UnsavedFileTransition, type UnsavedKnowledgeTransition } from "@/lib/unsaved-file-guard";
 import { getWorkspaceHelpEnginePhase } from "@/lib/workspace-help";
-import { getWorkspaceTaskBoardPhase, nextWorkspaceTaskStatus, type WorkspaceTaskStatus } from "@/lib/workspace-tasks";
+import { filterWorkspaceTasks, getWorkspaceTaskBoardPhase, getWorkspaceTaskFilterPhase, nextWorkspaceTaskStatus, type WorkspaceTaskStatus, type WorkspaceTaskStatusFilter } from "@/lib/workspace-tasks";
 import { canCreateWorkspaceTask } from "@/lib/workspace-task-create";
 import { canSaveWorkspaceTaskTitle } from "@/lib/workspace-task-title-edit";
 import { canSaveWorkspaceTaskDueDate, formatWorkspaceTaskDueDate, getWorkspaceTaskDueDateInput, parseWorkspaceTaskDueDate } from "@/lib/workspace-task-due-date";
@@ -667,9 +667,12 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
   const [taskDescriptionDraft, setTaskDescriptionDraft] = useState("");
   const [editingTaskProjectId, setEditingTaskProjectId] = useState<number | null>(null);
   const [taskProjectDraft, setTaskProjectDraft] = useState("");
+  const [taskStatusFilter, setTaskStatusFilter] = useState<WorkspaceTaskStatusFilter>("all");
   const [taskOperationError, setTaskOperationError] = useState<string | null>(null);
   const [taskOperationNotice, setTaskOperationNotice] = useState<string | null>(null);
   const taskBoardPhase = getWorkspaceTaskBoardPhase({ isLoading: tasksQuery.isLoading, isError: tasksQuery.isError, count: tasks.length });
+  const filteredTasks = filterWorkspaceTasks(tasks, taskStatusFilter);
+  const taskFilterPhase = getWorkspaceTaskFilterPhase({ totalCount: tasks.length, filteredCount: filteredTasks.length, filter: taskStatusFilter });
   const taskCreateMutation = trpc.workspace.task.create.useMutation({
     onSuccess: async () => {
       setTaskOperationError(null);
@@ -866,8 +869,12 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
         {taskBoardPhase === "loading" ? <p className="workspace-data-muted dashboard-empty-state">{isAr ? "يُحمّل المهام…" : "Loading tasks…"}</p> : null}
         {taskBoardPhase === "error" ? <div className="task-board-state"><p className="workspace-data-error">{isAr ? "تعذر تحميل المهام." : "Tasks could not be loaded."}</p><button type="button" className="text-action" onClick={() => void tasksQuery.refetch()}>{isAr ? "إعادة المحاولة" : "Retry"}</button></div> : null}
         {taskBoardPhase === "empty" ? <p className="workspace-data-muted dashboard-empty-state">{isAr ? "لا توجد مهام محفوظة. ستظهر المهام التي تنشئها أو تستخرجها هنا." : "No tasks are saved. Tasks you create or extract will appear here."}</p> : null}
-        {taskBoardPhase === "ready" ? <div className="task-board-list">
-          {tasks.slice(0, 8).map(task => {
+        {taskBoardPhase === "ready" ? <div className="task-board-filters" aria-label={isAr ? "تصفية حالة المهام" : "Filter task status"}>
+          {(["all", "todo", "in_progress", "done"] as WorkspaceTaskStatusFilter[]).map((filter) => <button type="button" aria-pressed={taskStatusFilter === filter} className={cn("task-board-filter", taskStatusFilter === filter && "is-active")} key={filter} onClick={() => setTaskStatusFilter(filter)}>{filter === "all" ? (isAr ? "الكل" : "All") : taskStatusLabel(filter)}</button>)}
+        </div> : null}
+        {taskBoardPhase === "ready" && taskFilterPhase === "filtered_empty" ? <p className="workspace-data-muted dashboard-empty-state">{isAr ? "لا توجد مهام بهذه الحالة. غيّر المرشح لعرض المهام الأخرى." : "No tasks match this status. Change the filter to view other tasks."}</p> : null}
+        {taskBoardPhase === "ready" && taskFilterPhase === "ready" ? <div className="task-board-list">
+          {filteredTasks.slice(0, 8).map(task => {
             const isUpdating = taskUpdateMutation.isPending && taskUpdateMutation.variables?.id === task.id;
             const isRenaming = taskTitleUpdateMutation.isPending && taskTitleUpdateMutation.variables?.id === task.id;
             const isUpdatingDue = taskDueUpdateMutation.isPending && taskDueUpdateMutation.variables?.id === task.id;

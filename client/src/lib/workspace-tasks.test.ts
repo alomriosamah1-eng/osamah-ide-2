@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getWorkspaceTaskBoardPhase, nextWorkspaceTaskStatus } from "./workspace-tasks";
+import { filterWorkspaceTasks, getWorkspaceTaskBoardPhase, getWorkspaceTaskFilterPhase, nextWorkspaceTaskStatus } from "./workspace-tasks";
 
 describe("workspace task board helpers", () => {
   it("keeps lifecycle presentation honest when tasks are loading, failed, empty, or ready", () => {
@@ -13,5 +13,14 @@ describe("workspace task board helpers", () => {
     expect(nextWorkspaceTaskStatus("todo")).toBe("in_progress");
     expect(nextWorkspaceTaskStatus("in_progress")).toBe("done");
     expect(nextWorkspaceTaskStatus("done")).toBe("todo");
+  });
+
+  it("filters only loaded task records and identifies a selected empty view", () => {
+    const tasks = [{ id: 1, status: "todo" as const }, { id: 2, status: "done" as const }];
+
+    expect(filterWorkspaceTasks(tasks, "all")).toEqual(tasks);
+    expect(filterWorkspaceTasks(tasks, "done")).toEqual([{ id: 2, status: "done" }]);
+    expect(getWorkspaceTaskFilterPhase({ totalCount: 2, filteredCount: 0, filter: "in_progress" })).toBe("filtered_empty");
+    expect(getWorkspaceTaskFilterPhase({ totalCount: 0, filteredCount: 0, filter: "todo" })).toBe("ready");
   });
 });
