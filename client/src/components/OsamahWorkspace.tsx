@@ -11,7 +11,7 @@ import { filterWorkspaceCommands, getWorkspaceCommands } from "@/lib/command-pal
 import { catalogFromEmbeddedOpenCode, getOpenCodeModel, getOpenCodeModelPlaceholder, initialOpenCodeCatalog } from "@/lib/opencode-contract";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
-import { getOrCreateOpenCodeSession } from "@/lib/opencode-session";
+import { getOrCreateOpenCodeSession, isOpenCodeSessionCleanupBlocked } from "@/lib/opencode-session";
 import { getWorkspaceHelpEnginePhase } from "@/lib/workspace-help";
 import ServerSettingsView, { type PreferencePatch, type SavedPreferences } from "@/components/ServerSettingsView";
 import PresentationStudio from "@/components/PresentationStudio";
@@ -287,6 +287,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   const [pendingPermissions, setPendingPermissions] = useState<Array<{ id: string; label: string }>>([]);
   const [trackedSessionID, setTrackedSessionID] = useState<string | null>(null);
   const [awaitingAssistantResponse, setAwaitingAssistantResponse] = useState(false);
+  const [sessionCleanupFailed, setSessionCleanupFailed] = useState(false);
   const receivedAssistantMessageIDs = useRef(new Set<string>());
   const activeSessionId = useRef<string | null>(null);
   const runtimeQuery = trpc.opencode.status.useQuery();
@@ -298,6 +299,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   const createSession = trpc.opencode.session.create.useMutation();
   const sendToSession = trpc.opencode.session.send.useMutation();
   const replyPermission = trpc.opencode.session.replyPermission.useMutation();
+  const removeSession = trpc.opencode.session.remove.useMutation();
   const sessionMessagesQuery = trpc.opencode.session.messages.useQuery(
     trackedSessionID ? { sessionID: trackedSessionID } : skipToken,
     { enabled: Boolean(trackedSessionID && awaitingAssistantResponse), refetchInterval: awaitingAssistantResponse ? 4_000 : false, retry: false },
@@ -313,9 +315,12 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     () => getOpenCodeModel(modelCatalog, selectedModelValue),
     [modelCatalog, selectedModelValue],
   );
-  const isChatBusy = createSession.isPending || sendToSession.isPending || awaitingAssistantResponse;
-  const canSendMessage = Boolean(draft.trim() && selectedModel && modelCatalog.runtime === "ready" && !isChatBusy);
-  const sendAvailabilityMessage = !draft.trim()
+  const isSessionCleanupBlocked = isOpenCodeSessionCleanupBlocked(activeSessionId.current, sessionCleanupFailed);
+  const isChatBusy = createSession.isPending || sendToSession.isPending || awaitingAssistantResponse || removeSession.isPending;
+  const canSendMessage = Boolean(draft.trim() && selectedModel && modelCatalog.runtime === "ready" && !isChatBusy && !isSessionCleanupBlocked);
+  const sendAvailabilityMessage = isSessionCleanupBlocked
+    ? (isAr ? "تعذر تنظيف جلسة القسم السابق. أعد محاولة إنهاء الجلسة قبل إرسال سياق جديد." : "The previous workspace session could not be cleaned up. Retry ending it before sending new context.")
+    : !draft.trim()
     ? (isAr ? "اكتب رسالة أولاً." : "Write a message first.")
     : !selectedModel
       ? (isAr ? "اختر نموذج OpenCode مكتشفاً أولاً." : "Choose a discovered OpenCode model first.")
@@ -356,7 +361,48 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
     mind: isAr ? ["استخرج الرؤى", "اربط المصادر"] : ["Extract insights", "Connect sources"],
     settings: isAr ? ["اقترح تهيئة", "راجع الإعدادات"] : ["Suggest a setup", "Review settings"],
   };
+  const clearLocalSession = () => {
+    setDraft("");
+    setMessages([]);
+    setPendingPermissions([]);
+    setTrackedSessionID(null);
+    setAwaitingAssistantResponse(false);
+    setSessionCleanupFailed(false);
+    receivedAssistantMessageIDs.current.clear();
+    activeSessionId.current = null;
+  };
+
+  const discardSession = async (sessionID: string, reason: "manual" | "workspace" | "model") => {
+    try {
+      const result = await removeSession.mutateAsync({ sessionID });
+      clearLocalSession();
+      const details = {
+        manual: isAr ? "أُغلقت جلسة OpenCode وحُذفت من المحرك." : "The OpenCode session was closed and removed from the runtime.",
+        workspace: isAr ? "أُغلقت جلسة القسم السابق عند الانتقال إلى مساحة عمل جديدة." : "The previous workspace session was closed when switching workspaces.",
+        model: isAr ? "أُغلقت الجلسة السابقة قبل تغيير نموذج OpenCode." : "The previous session was closed before changing the OpenCode model.",
+      };
+      setConnectionMessage(result.alreadyAbsent
+        ? (isAr ? "كانت جلسة OpenCode السابقة منتهية بالفعل؛ جرى تنظيفها محلياً." : "The previous OpenCode session was already absent and was cleared locally.")
+        : details[reason]);
+      return true;
+    } catch (error) {
+      setSessionCleanupFailed(true);
+      const detail = error instanceof Error ? error.message : isAr ? "حدث تعذر غير معروف." : "An unknown failure occurred.";
+      setConnectionMessage(isAr ? `تعذر إنهاء جلسة OpenCode: ${detail}` : `The OpenCode session could not be closed: ${detail}`);
+      return false;
+    }
+  };
+
+  const selectOpenCodeModel = async (value: string) => {
+    if (value === selectedModelValue) return;
+    const previousSessionID = activeSessionId.current;
+    if (previousSessionID && !(await discardSession(previousSessionID, "model"))) return;
+    setSelectedModelValue(value);
+  };
+
   const inspectOpenCode = async () => {
+    const previousSessionID = activeSessionId.current;
+    if (previousSessionID && !(await discardSession(previousSessionID, "model"))) return;
     setConnectionMessage(isAr ? "يجري فحص محرك OpenCode المضمّن…" : "Checking the embedded OpenCode runtime…");
     const runtime = await runtimeQuery.refetch();
     if (runtime.data?.health !== "healthy") {
@@ -374,13 +420,12 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   };
 
   useEffect(() => {
-    setDraft("");
-    setMessages([]);
-    setPendingPermissions([]);
-    setTrackedSessionID(null);
-    setAwaitingAssistantResponse(false);
-    receivedAssistantMessageIDs.current.clear();
-    activeSessionId.current = null;
+    const previousSessionID = activeSessionId.current;
+    if (!previousSessionID) {
+      clearLocalSession();
+      return;
+    }
+    void discardSession(previousSessionID, "workspace");
   }, [workspace]);
 
   useEffect(() => {
@@ -401,6 +446,10 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
   const sendMessage = async (text = draft) => {
     const message = text.trim();
     if (!message) return;
+    if (isSessionCleanupBlocked) {
+      setConnectionMessage(isAr ? "لا يمكن إرسال سياق جديد قبل تنظيف جلسة القسم السابق." : "New context cannot be sent before the previous workspace session is cleaned up.");
+      return;
+    }
     if (!selectedModel || modelCatalog.runtime !== "ready") {
       setConnectionMessage(isAr ? "لا يمكن الإرسال قبل أن يصبح المحرك المضمّن صحياً ويكتشف نموذجاً فعلياً." : "Sending requires a healthy embedded runtime and a discovered model.");
       return;
@@ -515,7 +564,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
               </div>
             ))}
           </div>
-        <div className="agent-prompt-row">{chatPrompts[workspace].map((prompt) => <button key={prompt} disabled={createSession.isPending || sendToSession.isPending} onClick={() => void sendMessage(prompt)}>{prompt}</button>)}</div>
+        <div className="agent-prompt-row">{chatPrompts[workspace].map((prompt) => <button key={prompt} disabled={createSession.isPending || sendToSession.isPending || isSessionCleanupBlocked} onClick={() => void sendMessage(prompt)}>{prompt}</button>)}</div>
       </div>
 
       <form className="ai-composer" onSubmit={(event) => { event.preventDefault(); if (canSendMessage) void sendMessage(); }}>
@@ -539,7 +588,8 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
               <small>{isAr ? "مصدر OpenCode الحقيقي داخل Osamah — لا مفاتيح ولا نماذج ثابتة" : "Real OpenCode source inside Osamah — no keys or fixed models"}</small>
             </div>
             <div className="opencode-connection-controls">
-              <button type="button" onClick={() => void inspectOpenCode()} disabled={modelCatalog.runtime === "checking"}>{isAr ? "فحص المحرك" : "Check runtime"}</button>
+              <button type="button" onClick={() => void inspectOpenCode()} disabled={modelCatalog.runtime === "checking" || removeSession.isPending || isSessionCleanupBlocked}>{isAr ? "فحص المحرك" : "Check runtime"}</button>
+              {activeSessionId.current && <button className="opencode-session-end" type="button" onClick={() => void discardSession(activeSessionId.current!, "manual")} disabled={createSession.isPending || sendToSession.isPending || removeSession.isPending}>{isAr ? "إنهاء الجلسة" : "End session"}</button>}
             </div>
             {connectionMessage && <small className="opencode-connection-feedback">{connectionMessage}</small>}
           </div>
@@ -548,7 +598,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
               <span><Signal tone="blue" pulse /> OpenCode</span>
               <small>{isAr ? "نماذج OpenCode المكتشفة" : "Discovered OpenCode models"}</small>
             </div>
-            <Select value={selectedModelValue} onValueChange={(value) => { activeSessionId.current = null; setPendingPermissions([]); setSelectedModelValue(value); }} disabled={modelCatalog.models.length === 0 || isChatBusy}>
+            <Select value={selectedModelValue} onValueChange={(value) => void selectOpenCodeModel(value)} disabled={modelCatalog.models.length === 0 || isChatBusy || isSessionCleanupBlocked}>
               <SelectTrigger className="opencode-model-trigger" size="sm" aria-label={isAr ? "اختيار نموذج OpenCode" : "Choose an OpenCode model"}>
                 <SelectValue placeholder={getOpenCodeModelPlaceholder({ hasDiscoveredModels: modelCatalog.models.length > 0, language: lang })} />
               </SelectTrigger>

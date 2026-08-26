@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { getOrCreateOpenCodeSession } from "./opencode-session";
+import { getOrCreateOpenCodeSession, isOpenCodeSessionCleanupBlocked } from "./opencode-session";
 
 describe("getOrCreateOpenCodeSession", () => {
   it("reuses the active session without creating an orphaned replacement", async () => {
@@ -14,5 +14,11 @@ describe("getOrCreateOpenCodeSession", () => {
 
     await expect(getOrCreateOpenCodeSession(null, create)).resolves.toBe("created-session");
     expect(create).toHaveBeenCalledTimes(1);
+  });
+
+  it("blocks reuse after a cleanup failure while the active session remains", () => {
+    expect(isOpenCodeSessionCleanupBlocked("active-session", true)).toBe(true);
+    expect(isOpenCodeSessionCleanupBlocked(null, true)).toBe(false);
+    expect(isOpenCodeSessionCleanupBlocked("active-session", false)).toBe(false);
   });
 });

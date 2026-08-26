@@ -19,6 +19,8 @@
 .opencode-connection-controls button:hover:not(:disabled) { border-color: rgba(148,179,255,.7); background: rgba(94,140,255,.24); }
 .opencode-connection-controls button:active:not(:disabled) { transform: scale(.97); }
 .opencode-connection-controls button:disabled { cursor: wait; opacity: .6; }
+.opencode-connection-controls .opencode-session-end { border-color: rgba(210,122,122,.42); background: rgba(192,87,87,.11); color: #ffd0d0; }
+.opencode-connection-controls .opencode-session-end:hover:not(:disabled) { border-color: rgba(239,150,150,.76); background: rgba(192,87,87,.2); }
 .opencode-connection-feedback { display: block; color: #93a7d9; }
 .opencode-model-copy { display: grid; gap: 2px; min-width: 0; }
 .opencode-model-copy > span { display: inline-flex; align-items: center; gap: 5px; color: #b4c8fb; font: 8px "JetBrains Mono", monospace; letter-spacing: .08em; }
@@ -61,6 +63,7 @@
 :root:not(.dark) .opencode-connection-copy small, :root:not(.dark) .opencode-connection-feedback { color: #637594; }
 :root:not(.dark) .opencode-connection-controls input { border-color: rgba(69,101,167,.2); background: rgba(255,255,255,.78); color: #314a7c; }
 :root:not(.dark) .opencode-connection-controls button { border-color: rgba(69,101,167,.3); background: rgba(94,140,255,.12); color: #355fae; }
+:root:not(.dark) .opencode-connection-controls .opencode-session-end { border-color: rgba(177,75,75,.34); background: rgba(214,105,105,.08); color: #a44c4c; }
 :root:not(.dark) .opencode-model-copy > span { color: #355fae; }
 :root:not(.dark) .opencode-model-trigger { background: rgba(255,255,255,.78) !important; color: #314a7c !important; }
 :root:not(.dark) .opencode-model-content { background: #fbfcff !important; box-shadow: 0 16px 34px rgba(43,64,111,.18) !important; }

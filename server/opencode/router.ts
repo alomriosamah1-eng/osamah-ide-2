@@ -11,6 +11,7 @@ import { buildAgentWorkspacePrompt, type AgentWorkspaceSection } from "../engine
 import { embeddedOpenCodeStatus, readEmbeddedOpenCodePackage } from "./embeddedRuntime.js";
 import {
   createOpenCodeSession,
+  deleteOpenCodeSession,
   findDiscoveredOpenCodeModel,
   listOpenCodeMessages,
   listOpenCodeModels,
@@ -22,6 +23,11 @@ import {
   waitForOpenCodeSession,
 } from "./api.js";
 import { isOpenCodeExecutionDisabled } from "./policy.js";
+import {
+  isOpenCodeSessionOwnedBy,
+  registerOpenCodeSessionOwner,
+  releaseOpenCodeSessionOwner,
+} from "./sessionOwnership.js";
 
 const modelSelection = z.object({
   id: z.string().min(1).max(256),
@@ -35,6 +41,16 @@ function exposeGatewayError(error: unknown): never {
     throw new TRPCError({ code: "PRECONDITION_FAILED", message: error.message });
   }
   throw error;
+}
+
+/** Rejects attempts to reuse a transient session from a different local account or server lifetime. */
+function assertOpenCodeSessionOwner(sessionID: string, userID: number) {
+  if (!isOpenCodeSessionOwnedBy(sessionID, userID)) {
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "This OpenCode session is not owned by the current local account or has expired.",
+    });
+  }
 }
 
 /**
@@ -72,7 +88,7 @@ export const openCodeRouter = router({
   source: publicProcedure.query(async () => readEmbeddedOpenCodePackage()),
   models: publicProcedure.query(async () => listOpenCodeModels().catch(exposeGatewayError)),
   session: router({
-    create: openCodeExecutionProcedure.input(z.object({ model: modelSelection })).mutation(async ({ input }) => {
+    create: openCodeExecutionProcedure.input(z.object({ model: modelSelection })).mutation(async ({ ctx, input }) => {
       try {
         const discovered = await listOpenCodeModels();
         const model = findDiscoveredOpenCodeModel(discovered, input.model);
@@ -82,17 +98,21 @@ export const openCodeRouter = router({
             message: "The selected OpenCode model is no longer enabled by the embedded runtime.",
           });
         }
-        return await createOpenCodeSession({ id: model.id, providerID: model.providerID, variant: model.variant });
+        const session = await createOpenCodeSession({ id: model.id, providerID: model.providerID, variant: model.variant });
+        registerOpenCodeSessionOwner(session.id, ctx.user.id);
+        return session;
       } catch (error) {
         return exposeGatewayError(error);
       }
     }),
     prompt: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1), text: z.string().trim().min(1).max(32_000), section: workspaceSection })).mutation(async ({ ctx, input }) => {
+      assertOpenCodeSessionOwner(input.sessionID, ctx.user.id);
       const prompt = await buildAgentWorkspacePrompt(ctx.user.id, input.section as AgentWorkspaceSection, input.text);
       return promptOpenCodeSession(input.sessionID, prompt).catch(exposeGatewayError);
     }),
     send: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1), text: z.string().trim().min(1).max(32_000), section: workspaceSection })).mutation(async ({ ctx, input }) => {
       try {
+        assertOpenCodeSessionOwner(input.sessionID, ctx.user.id);
         const prompt = await buildAgentWorkspacePrompt(ctx.user.id, input.section as AgentWorkspaceSection, input.text);
         const initialAssistantMessageCount = (await listOpenCodeMessages(input.sessionID)).filter(message => message.role === "assistant").length;
         await promptOpenCodeSession(input.sessionID, prompt);
@@ -112,13 +132,16 @@ export const openCodeRouter = router({
         return exposeGatewayError(error);
       }
     }),
-    wait: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1) })).mutation(async ({ input }) => {
+    wait: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1) })).mutation(async ({ ctx, input }) => {
+      assertOpenCodeSessionOwner(input.sessionID, ctx.user.id);
       return waitForOpenCodeSession(input.sessionID).catch(exposeGatewayError);
     }),
-    messages: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1) })).query(async ({ input }) => {
+    messages: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1) })).query(async ({ ctx, input }) => {
+      assertOpenCodeSessionOwner(input.sessionID, ctx.user.id);
       return listOpenCodeMessages(input.sessionID).catch(exposeGatewayError);
     }),
-    permissions: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1) })).query(async ({ input }) => {
+    permissions: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1) })).query(async ({ ctx, input }) => {
+      assertOpenCodeSessionOwner(input.sessionID, ctx.user.id);
       return listOpenCodePermissions(input.sessionID).catch(exposeGatewayError);
     }),
     replyPermission: openCodeExecutionProcedure.input(z.object({
@@ -126,8 +149,23 @@ export const openCodeRouter = router({
       requestID: z.string().min(1),
       reply: z.enum(["once", "always", "reject"]),
       message: z.string().trim().max(2_000).optional(),
-    })).mutation(async ({ input }) => {
+    })).mutation(async ({ ctx, input }) => {
+      assertOpenCodeSessionOwner(input.sessionID, ctx.user.id);
       return replyToOpenCodePermission(input.sessionID, input.requestID, input.reply, input.message).catch(exposeGatewayError);
+    }),
+    remove: openCodeExecutionProcedure.input(z.object({ sessionID: z.string().min(1) })).mutation(async ({ ctx, input }) => {
+      assertOpenCodeSessionOwner(input.sessionID, ctx.user.id);
+      try {
+        await deleteOpenCodeSession(input.sessionID);
+        releaseOpenCodeSessionOwner(input.sessionID);
+        return { removed: true, alreadyAbsent: false };
+      } catch (error) {
+        if (error instanceof OpenCodeGatewayError && error.status === 404) {
+          releaseOpenCodeSessionOwner(input.sessionID);
+          return { removed: true, alreadyAbsent: true };
+        }
+        return exposeGatewayError(error);
+      }
     }),
   }),
 });

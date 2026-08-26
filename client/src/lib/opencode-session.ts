@@ -8,6 +8,17 @@
 export type OpenCodeSessionReference = { id: string };
 
 /**
+ * Keeps a failed cleanup visible as an operational blocker so a prior workspace
+ * session cannot accidentally receive a prompt for the next workspace.
+ */
+export function isOpenCodeSessionCleanupBlocked(
+  activeSessionId: string | null,
+  cleanupFailed: boolean,
+) {
+  return Boolean(activeSessionId && cleanupFailed);
+}
+
+/**
  * Reuses an active OpenCode session or creates exactly one when no session exists.
  * The caller retains the returned identifier in its component state/ref.
  */
