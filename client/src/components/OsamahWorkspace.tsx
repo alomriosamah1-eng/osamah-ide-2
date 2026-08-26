@@ -12,6 +12,7 @@ import { catalogFromEmbeddedOpenCode, getOpenCodeModel, getOpenCodeModelPlacehol
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { getOrCreateOpenCodeSession, isOpenCodeSessionCleanupBlocked, reconcileOpenCodePendingPermissions, removeResolvedOpenCodePermission, shouldPollOpenCodeSessionPermissions, type OpenCodePendingPermission } from "@/lib/opencode-session";
+import { shouldConfirmUnsavedFileTransition, type UnsavedFileTransition } from "@/lib/unsaved-file-guard";
 import { getWorkspaceHelpEnginePhase } from "@/lib/workspace-help";
 import ServerSettingsView, { type PreferencePatch, type SavedPreferences } from "@/components/ServerSettingsView";
 import PresentationStudio from "@/components/PresentationStudio";
@@ -799,7 +800,26 @@ function Programming({ lang }: { lang: Language }) {
   const files = filesQuery.data ?? [];
   const activeProject = projects.find(project => project.id === selectedProjectId) ?? null;
   const activeFile = files.find(file => file.id === selectedFileId) ?? null;
+  const hasUnsavedFileChanges = Boolean(activeFile && draftContent !== (activeFile.content ?? ""));
   const isMutating = createProject.isPending || renameProject.isPending || removeProject.isPending || createFile.isPending || saveFile.isPending || renameFile.isPending || removeFile.isPending || createTask.isPending || updateTask.isPending || removeTask.isPending;
+
+  const confirmEditorTransition = (transition: UnsavedFileTransition) => {
+    if (!shouldConfirmUnsavedFileTransition({ hasActiveFile: Boolean(activeFile), hasUnsavedChanges: hasUnsavedFileChanges, transition })) return true;
+    return window.confirm(isAr
+      ? "لديك تعديلات غير محفوظة في الملف الحالي. سيؤدي هذا الانتقال إلى فقدانها. هل تريد المتابعة؟"
+      : "The current file has unsaved changes. This transition will discard them. Continue?");
+  };
+
+  const selectFile = (nextFileId: number | null) => {
+    if (nextFileId === selectedFileId || !confirmEditorTransition(nextFileId === null ? "close-file" : "switch-file")) return;
+    setSelectedFileId(nextFileId);
+  };
+
+  const selectProject = (nextProjectId: number | null) => {
+    if (nextProjectId === selectedProjectId || !confirmEditorTransition("switch-project")) return;
+    setSelectedProjectId(nextProjectId);
+    setSelectedFileId(null);
+  };
 
   useEffect(() => {
     if (!selectedProjectId && projects.length > 0) setSelectedProjectId(projects[0].id);
@@ -819,6 +839,7 @@ function Programming({ lang }: { lang: Language }) {
   }, [activeFile?.id, activeFile?.content]);
 
   const askForProject = () => {
+    if (!confirmEditorTransition("create-project")) return;
     const name = window.prompt(isAr ? "اسم المشروع" : "Project name");
     if (!name?.trim()) return;
     createProject.mutate({ name: name.trim(), language: "TypeScript" });
@@ -875,7 +896,7 @@ function Programming({ lang }: { lang: Language }) {
     <div className="programming-view workspace-view">
       <div className="workspace-toolbar">
         <div className="toolbar-tabs">
-          {activeFile ? <button type="button" className="active-tab" onClick={() => setSelectedFileId(null)}><FileCode2 size={15} /> {activeFile.name} <X size={13} /></button> : <span className="workspace-empty-tab">{isAr ? "لا يوجد ملف مفتوح" : "No file open"}</span>}
+          {activeFile ? <button type="button" className="active-tab" onClick={() => selectFile(null)}><FileCode2 size={15} /> {activeFile.name} <X size={13} /></button> : <span className="workspace-empty-tab">{isAr ? "لا يوجد ملف مفتوح" : "No file open"}</span>}
           <button type="button" className="toolbar-add" onClick={askForFile} disabled={!activeProject || isMutating} aria-label={isAr ? "ملف جديد" : "New file"}><Plus size={15} /></button>
         </div>
         <div className="toolbar-controls"><button type="button" className="theia-state-control" onClick={() => void theiaStatusQuery.refetch()} disabled={theiaStatusQuery.isFetching} title={theiaDetail}><Signal tone={theiaTone} pulse={theiaStatusQuery.isFetching || theiaPhase === "running"} /> Theia · {theiaLabel}</button><span className="runtime-readonly"><Play size={14} /> {isAr ? "التشغيل يتطلب بناء Theia" : "Run requires a Theia build"}</span></div>
@@ -884,7 +905,7 @@ function Programming({ lang }: { lang: Language }) {
         <aside className="project-explorer glass-panel">
           <SectionLabel action={<button type="button" onClick={askForProject} disabled={isMutating} aria-label={isAr ? "مشروع جديد" : "New project"}><Plus size={15} /></button>}>{isAr ? "المستكشف" : "Explorer"}</SectionLabel>
           <div className="project-picker">
-            <select value={selectedProjectId ?? ""} onChange={event => { setSelectedProjectId(event.target.value ? Number(event.target.value) : null); setSelectedFileId(null); }} disabled={projectsQuery.isLoading || isMutating} aria-label={isAr ? "المشروع" : "Project"}>
+            <select value={selectedProjectId ?? ""} onChange={event => selectProject(event.target.value ? Number(event.target.value) : null)} disabled={projectsQuery.isLoading || isMutating} aria-label={isAr ? "المشروع" : "Project"}>
               <option value="">{projects.length === 0 ? (isAr ? "أنشئ مشروعاً للبدء" : "Create a project to begin") : (isAr ? "اختر مشروعاً" : "Select a project")}</option>
               {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
             </select>
@@ -894,7 +915,7 @@ function Programming({ lang }: { lang: Language }) {
           <div className="file-tree">
             {filesQuery.isLoading ? <p className="workspace-data-muted">{isAr ? "يُحمّل الملفات…" : "Loading files…"}</p> : null}
             {!filesQuery.isLoading && activeProject && files.length === 0 ? <p className="workspace-data-muted">{isAr ? "لا توجد ملفات. أضف ملفاً جديداً." : "No files yet. Add a new file."}</p> : null}
-            {files.map(file => <ExplorerItem key={file.id} icon={file.kind === "directory" ? <Folder size={14} /> : <FileCode2 size={14} />} label={file.path} active={file.id === selectedFileId} badge={file.id === activeFile?.id && draftContent !== (activeFile.content ?? "") ? "M" : undefined} onClick={() => setSelectedFileId(file.id)} />)}
+            {files.map(file => <ExplorerItem key={file.id} icon={file.kind === "directory" ? <Folder size={14} /> : <FileCode2 size={14} />} label={file.path} active={file.id === selectedFileId} badge={file.id === activeFile?.id && hasUnsavedFileChanges ? "M" : undefined} onClick={() => selectFile(file.id)} />)}
           </div>
           <div className="explorer-footer"><button type="button" onClick={askForFile} disabled={!activeProject || isMutating}><Plus size={14} /> {isAr ? "ملف جديد" : "New file"}</button><button type="button" onClick={askForProject} disabled={isMutating}><FolderOpen size={14} /> {isAr ? "مشروع جديد" : "New project"}</button></div>
         </aside>
