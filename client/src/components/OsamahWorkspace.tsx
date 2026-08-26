@@ -17,6 +17,7 @@ import { getWorkspaceHelpEnginePhase } from "@/lib/workspace-help";
 import { getWorkspaceTaskBoardPhase, nextWorkspaceTaskStatus, type WorkspaceTaskStatus } from "@/lib/workspace-tasks";
 import { canCreateWorkspaceTask } from "@/lib/workspace-task-create";
 import { canSaveWorkspaceTaskTitle } from "@/lib/workspace-task-title-edit";
+import { canSaveWorkspaceTaskDueDate, formatWorkspaceTaskDueDate, getWorkspaceTaskDueDateInput, parseWorkspaceTaskDueDate } from "@/lib/workspace-task-due-date";
 import ServerSettingsView, { type PreferencePatch, type SavedPreferences } from "@/components/ServerSettingsView";
 import PresentationStudio from "@/components/PresentationStudio";
 import "./opencode-model.css";
@@ -657,6 +658,8 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
   const [selectedTaskProjectId, setSelectedTaskProjectId] = useState("");
   const [editingTaskId, setEditingTaskId] = useState<number | null>(null);
   const [taskTitleDraft, setTaskTitleDraft] = useState("");
+  const [editingTaskDueId, setEditingTaskDueId] = useState<number | null>(null);
+  const [taskDueDraft, setTaskDueDraft] = useState("");
   const [taskOperationError, setTaskOperationError] = useState<string | null>(null);
   const [taskOperationNotice, setTaskOperationNotice] = useState<string | null>(null);
   const taskBoardPhase = getWorkspaceTaskBoardPhase({ isLoading: tasksQuery.isLoading, isError: tasksQuery.isError, count: tasks.length });
@@ -689,6 +692,17 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
       await utils.workspace.activity.list.invalidate();
     },
     onError: () => setTaskOperationError(isAr ? "تعذر حفظ عنوان المهمة. حاول مجدداً." : "The task title could not be saved. Try again."),
+  });
+  const taskDueUpdateMutation = trpc.workspace.task.update.useMutation({
+    onSuccess: async () => {
+      setTaskOperationError(null);
+      setTaskOperationNotice(isAr ? "حُفظ تاريخ استحقاق المهمة. ستظهر النسخة المحدثة بعد تحديث القائمة." : "The task due date was saved and will appear after the list refreshes.");
+      setEditingTaskDueId(null);
+      setTaskDueDraft("");
+      await utils.workspace.task.list.invalidate();
+      await utils.workspace.activity.list.invalidate();
+    },
+    onError: () => setTaskOperationError(isAr ? "تعذر حفظ تاريخ الاستحقاق. حاول مجدداً." : "The task due date could not be saved. Try again."),
   });
   const taskRemoveMutation = trpc.workspace.task.remove.useMutation({
     onSuccess: async () => { setTaskOperationError(null); setTaskOperationNotice(null); await utils.workspace.task.list.invalidate(); await utils.workspace.activity.list.invalidate(); },
@@ -821,10 +835,13 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
           {tasks.slice(0, 8).map(task => {
             const isUpdating = taskUpdateMutation.isPending && taskUpdateMutation.variables?.id === task.id;
             const isRenaming = taskTitleUpdateMutation.isPending && taskTitleUpdateMutation.variables?.id === task.id;
+            const isUpdatingDue = taskDueUpdateMutation.isPending && taskDueUpdateMutation.variables?.id === task.id;
             const isRemoving = taskRemoveMutation.isPending && taskRemoveMutation.variables?.id === task.id;
             const isEditing = editingTaskId === task.id;
-            const isBusy = isUpdating || isRenaming || isRemoving;
+            const isEditingDue = editingTaskDueId === task.id;
+            const isBusy = isUpdating || isRenaming || isUpdatingDue || isRemoving;
             const canSaveTitle = isEditing && canSaveWorkspaceTaskTitle({ initialTitle: task.title, draftTitle: taskTitleDraft, isSaving: isRenaming });
+            const canSaveDueDate = isEditingDue && canSaveWorkspaceTaskDueDate({ initialDueAt: task.dueAt, draftDate: taskDueDraft, isSaving: isUpdatingDue });
             return <article className="task-board-row" key={task.id}>
               <div className="task-board-copy">
                 {isEditing ? <form className="task-title-edit" onSubmit={event => {
@@ -839,13 +856,28 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
                     <button type="submit" disabled={!canSaveTitle}>{isRenaming ? (isAr ? "يجري الحفظ…" : "Saving…") : (isAr ? "حفظ" : "Save")}</button>
                     <button type="button" disabled={isRenaming} onClick={() => { setEditingTaskId(null); setTaskTitleDraft(""); }}>{isAr ? "إلغاء" : "Cancel"}</button>
                   </span>
-                </form> : <div className="task-board-title-line"><strong>{task.title}</strong><button type="button" className="task-title-edit-button" disabled={isBusy} onClick={() => { setTaskOperationError(null); setTaskOperationNotice(null); setEditingTaskId(task.id); setTaskTitleDraft(task.title); }}>{isAr ? "تحرير" : "Edit"}</button></div>}
+                </form> : <div className="task-board-title-line"><strong>{task.title}</strong><button type="button" className="task-title-edit-button" disabled={isBusy || isEditingDue} onClick={() => { setTaskOperationError(null); setTaskOperationNotice(null); setEditingTaskId(task.id); setTaskTitleDraft(task.title); }}>{isAr ? "تحرير" : "Edit"}</button></div>}
                 {task.description ? <span>{task.description}</span> : null}
+                {isEditingDue ? <form className="task-due-edit" onSubmit={event => {
+                  event.preventDefault();
+                  if (!canSaveDueDate) return;
+                  const dueAt = parseWorkspaceTaskDueDate(taskDueDraft);
+                  setTaskOperationError(null);
+                  setTaskOperationNotice(null);
+                  taskDueUpdateMutation.mutate({ id: task.id, dueAt });
+                }}>
+                  <input aria-label={isAr ? `تاريخ استحقاق المهمة ${task.title}` : `Due date for ${task.title}`} dir={isAr ? "rtl" : "ltr"} onChange={event => setTaskDueDraft(event.target.value)} type="date" value={taskDueDraft} />
+                  <span className="task-due-edit-actions">
+                    <button type="submit" disabled={!canSaveDueDate}>{isUpdatingDue ? (isAr ? "يجري الحفظ…" : "Saving…") : (isAr ? "حفظ" : "Save")}</button>
+                    <button type="button" disabled={isUpdatingDue || !taskDueDraft} onClick={() => setTaskDueDraft("")}>{isAr ? "مسح" : "Clear"}</button>
+                    <button type="button" disabled={isUpdatingDue} onClick={() => { setEditingTaskDueId(null); setTaskDueDraft(""); }}>{isAr ? "إلغاء" : "Cancel"}</button>
+                  </span>
+                </form> : <div className="task-due-line"><span>{task.dueAt ? `${isAr ? "الاستحقاق: " : "Due: "}${formatWorkspaceTaskDueDate(task.dueAt, lang)}` : (isAr ? "بلا تاريخ استحقاق" : "No due date")}</span><button type="button" className="task-due-edit-button" disabled={isBusy || isEditing} onClick={() => { setTaskOperationError(null); setTaskOperationNotice(null); setEditingTaskDueId(task.id); setTaskDueDraft(getWorkspaceTaskDueDateInput(task.dueAt)); }}>{isAr ? "تاريخ" : "Date"}</button></div>}
               </div>
-              <select aria-label={isAr ? `حالة المهمة ${task.title}` : `Status for ${task.title}`} value={task.status} disabled={isBusy} onChange={event => taskUpdateMutation.mutate({ id: task.id, status: event.target.value as WorkspaceTaskStatus })}>
+              <select aria-label={isAr ? `حالة المهمة ${task.title}` : `Status for ${task.title}`} value={task.status} disabled={isBusy || isEditing || isEditingDue} onChange={event => taskUpdateMutation.mutate({ id: task.id, status: event.target.value as WorkspaceTaskStatus })}>
                 {(["todo", "in_progress", "done"] as WorkspaceTaskStatus[]).map(status => <option value={status} key={status}>{taskStatusLabel(status)}</option>)}
               </select>
-              <button type="button" className="task-remove-button" aria-label={isAr ? `حذف المهمة ${task.title}` : `Delete ${task.title}`} disabled={isBusy} onClick={() => taskRemoveMutation.mutate({ id: task.id })}><Trash2 size={15} /></button>
+              <button type="button" className="task-remove-button" aria-label={isAr ? `حذف المهمة ${task.title}` : `Delete ${task.title}`} disabled={isBusy || isEditing || isEditingDue} onClick={() => taskRemoveMutation.mutate({ id: task.id })}><Trash2 size={15} /></button>
             </article>;
           })}
         </div> : null}
