@@ -1,5 +1,18 @@
 /** Describes an editor transition that could replace the active file draft. */
-export type UnsavedFileTransition = "close-file" | "switch-file" | "switch-project" | "create-project";
+export type UnsavedDraftTransition =
+  | "close-file"
+  | "switch-file"
+  | "switch-project"
+  | "create-project"
+  | "switch-slide"
+  | "switch-deck"
+  | "create-deck"
+  | "create-slide"
+  | "delete-deck"
+  | "delete-slide";
+
+/** A file-editor transition retained for the programming workspace API. */
+export type UnsavedFileTransition = Extract<UnsavedDraftTransition, "close-file" | "switch-file" | "switch-project" | "create-project">;
 
 /**
  * Returns whether the user must explicitly confirm an editor transition.
@@ -9,6 +22,19 @@ export type UnsavedFileTransition = "close-file" | "switch-file" | "switch-proje
  * editor context. The helper is pure so all transition callers share the
  * same data-loss rule.
  */
+export function shouldConfirmUnsavedDraftTransition({
+  hasActiveDraft,
+  hasUnsavedChanges,
+  transition,
+}: {
+  hasActiveDraft: boolean;
+  hasUnsavedChanges: boolean;
+  transition: UnsavedDraftTransition;
+}): boolean {
+  return hasActiveDraft && hasUnsavedChanges && transition !== undefined;
+}
+
+/** Applies the generic draft rule to the active programming file. */
 export function shouldConfirmUnsavedFileTransition({
   hasActiveFile,
   hasUnsavedChanges,
@@ -18,5 +44,5 @@ export function shouldConfirmUnsavedFileTransition({
   hasUnsavedChanges: boolean;
   transition: UnsavedFileTransition;
 }): boolean {
-  return hasActiveFile && hasUnsavedChanges && transition !== undefined;
+  return shouldConfirmUnsavedDraftTransition({ hasActiveDraft: hasActiveFile, hasUnsavedChanges, transition });
 }
