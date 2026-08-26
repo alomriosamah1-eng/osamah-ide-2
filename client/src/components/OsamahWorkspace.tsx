@@ -72,7 +72,7 @@ import {
 
 type Language = "ar" | "en";
 type Workspace = "dashboard" | "programming" | "presentations" | "mind" | "settings";
-type SettingsSection = "general" | "appearance" | "workspace" | "agents" | "notifications" | "integrations" | "security";
+type SettingsSection = "general" | "appearance" | "workspace" | "agents" | "notifications" | "integrations" | "security" | "opencode";
 
 const content = {
   en: {

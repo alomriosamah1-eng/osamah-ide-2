@@ -186,7 +186,7 @@ export default function PresentationStudio({ lang }: { lang: Language }) {
           <textarea value={opencodeDraft} onChange={e => setOpencodeDraft(e.target.value)} disabled={opencodeBusy} rows={3} aria-label={isAr ? "رسالة للمساعد" : "Message to assistant"} placeholder={isAr ? "اسأل عن العرض أو الشريحة الحالية..." : "Ask about current deck or slide..."} />
           <button type="button" onClick={askOpenCode} disabled={opencodeBusy || !opencodeDraft.trim()} className="opencode-send-btn">{opencodeBusy ? (isAr ? "جارٍ الإرسال…" : "Sending...") : (isAr ? "إرسال إلى OpenCode" : "Send to OpenCode")}</button>
           {opencodeResponse ? <div className="opencode-response"><strong>{isAr ? "الرد / الحالة:" : "Response / Status:"}</strong> <span>{opencodeResponse}</span></div> : null}
-          {msgQuery.data?.messages && msgQuery.data.messages.length > 0 ? <div className="opencode-messages"><strong>{isAr ? "آخر الرسائل:" : "Latest messages:"}</strong><ul>{msgQuery.data.messages.map((m: any, i: number) => <li key={i}><strong>{m.role === "user" ? (isAr ? "أنت" : "You") : (isAr ? "المساعد" : "Assistant")}</strong>: {m.content?.slice?.(0, 200) ?? m.content}</li>)}</ul></div> : null}
+          {msgQuery.data?.messages && msgQuery.data.messages.length > 0 ? <div className="opencode-messages"><strong>{isAr ? "سجل الرسائل:" : "Message log:"}</strong><ul>{msgQuery.data.messages.map((m: any, i: number) => <li key={i} className={m.role === "assistant" ? "msg-assistant" : "msg-user"}><span className="msg-role">{m.role === "user" ? (isAr ? "أنت" : "You") : (isAr ? "الوكلاء" : "Agent")}</span><span className="msg-text">{m.content?.slice?.(0, 300) ?? m.content}</span></li>)}</ul></div> : null}
         </div>
       </aside>
     </div>
