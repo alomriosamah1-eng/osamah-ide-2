@@ -56,6 +56,7 @@ const accountKey = crypto.randomUUID();
 const updatedEmail = `workspace-e2e-updated-${suffix}@example.invalid`;
 const password = `E2e-${suffix}-Secure`;
 let projectId;
+let reassignmentProjectId;
 let fileId;
 let taskId;
 let noteId;
@@ -164,6 +165,13 @@ try {
   });
   projectId = project.id;
 
+  const reassignmentProject = await client.workspace.project.create.mutate({
+    name: "E2E Reassignment Target",
+    description: "Created only to verify task project reassignment.",
+    language: "TypeScript",
+  });
+  reassignmentProjectId = reassignmentProject.id;
+
   const updatedProject = await client.workspace.project.update.mutate({ id: projectId, name: "E2E Workspace Renamed" });
   if (updatedProject.name !== "E2E Workspace Renamed") throw new Error("Project rename was not persisted.");
 
@@ -187,16 +195,22 @@ try {
   taskId = task.id;
   const completedTask = await client.workspace.task.update.mutate({ id: taskId, status: "done" });
   if (completedTask.status !== "done") throw new Error("Task update was not persisted.");
+  const reassignedTask = await client.workspace.task.update.mutate({ id: taskId, projectId: reassignmentProjectId });
+  if (reassignedTask.projectId !== reassignmentProjectId) throw new Error("Task project reassignment was not persisted.");
+  const reassignedTasks = await client.workspace.task.list.query({ projectId: reassignmentProjectId });
+  if (!reassignedTasks.some(item => item.id === taskId)) throw new Error("Reassigned task was not listed under its new project.");
+  const generalTask = await client.workspace.task.update.mutate({ id: taskId, projectId: null });
+  if (generalTask.projectId !== null) throw new Error("Task project clearing was not persisted.");
 
   const [projects, files, tasks, activity] = await Promise.all([
     client.workspace.project.list.query(),
     client.workspace.file.list.query({ projectId }),
-    client.workspace.task.list.query({ projectId }),
+    client.workspace.task.list.query(),
     client.workspace.activity.list.query({ limit: 25 }),
   ]);
   if (!projects.some(item => item.id === projectId)) throw new Error("Created project was not listed.");
   if (!files.some(item => item.id === fileId && item.path === "src/app.ts")) throw new Error("Saved file was not listed.");
-  if (!tasks.some(item => item.id === taskId && item.status === "done")) throw new Error("Updated task was not listed.");
+  if (!tasks.some(item => item.id === taskId && item.status === "done" && item.projectId === null)) throw new Error("Updated general task was not listed.");
   if (!activity.some(item => item.entityType === "project" && item.entityId === projectId)) throw new Error("Workspace activity was not recorded.");
 
   const isolatedClient = createIsolatedClient();
@@ -294,6 +308,8 @@ try {
   taskId = undefined;
   await client.workspace.project.remove.mutate({ id: projectId });
   projectId = undefined;
+  await client.workspace.project.remove.mutate({ id: reassignmentProjectId });
+  reassignmentProjectId = undefined;
 
   await client.presentations.remove.mutate({ id: presentationId });
   presentationId = undefined;
@@ -306,7 +322,7 @@ try {
   if (cookie) throw new Error("Logout did not clear the local session cookie.");
 
   console.log(JSON.stringify({
-    verified: ["local-password-recovery-registration", "server-preferences-create-update", "local-profile-update", "presenton-source-status", "presentation-create-rename-delete", "presentation-slide-create-update-reorder-delete", "workspace-cross-account-isolation", "presentation-cross-account-isolation", "project-create-update-delete", "file-create-save-rename-delete", "task-create-update-delete", "activity-log", "second-brain-note-task-extraction", "second-brain-search", "second-brain-link-create-update-delete", "second-brain-self-link-rejected", "second-brain-cross-account-isolation"],
+    verified: ["local-password-recovery-registration", "server-preferences-create-update", "local-profile-update", "presenton-source-status", "presentation-create-rename-delete", "presentation-slide-create-update-reorder-delete", "workspace-cross-account-isolation", "presentation-cross-account-isolation", "project-create-update-delete", "task-project-reassign-clear", "file-create-save-rename-delete", "activity-log", "second-brain-note-task-extraction", "second-brain-search", "second-brain-link-create-update-delete", "second-brain-self-link-rejected", "second-brain-cross-account-isolation"],
     cleanedWorkspaceContent: true,
   }, null, 2));
 } catch (error) {
@@ -318,6 +334,7 @@ try {
   if (fileId) cleanup.push(client.workspace.file.remove.mutate({ id: fileId }).catch(() => undefined));
   if (taskId) cleanup.push(client.workspace.task.remove.mutate({ id: taskId }).catch(() => undefined));
   if (projectId) cleanup.push(client.workspace.project.remove.mutate({ id: projectId }).catch(() => undefined));
+  if (reassignmentProjectId) cleanup.push(client.workspace.project.remove.mutate({ id: reassignmentProjectId }).catch(() => undefined));
   if (presentationId) cleanup.push(client.presentations.remove.mutate({ id: presentationId }).catch(() => undefined));
   await Promise.all(cleanup);
   throw error;
