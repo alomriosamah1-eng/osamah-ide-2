@@ -1,0 +1,27 @@
+{
+  "name": "ai-agent-skills",
+  "version": "0.1.0",
+  "description": "Install portable SKILL.md agent skills into Claude Code, Codex, OpenCode and other agents.",
+  "bin": {
+    "ai-agent-skills": "bin/cli.js"
+  },
+  "license": "MIT",
+  "scripts": {
+    "validate": "node tests/validate-skills.mjs && node tests/check-vendored-parity.mjs",
+    "test": "node tests/validate-skills.mjs && node tests/check-vendored-parity.mjs && node --test tests/installers/cli.test.mjs"
+  },
+  "files": [
+    "bin",
+    "skills"
+  ],
+  "engines": {
+    "node": ">=16.7"
+  },
+  "keywords": [
+    "agent-skills",
+    "skill.md",
+    "claude-code",
+    "codex",
+    "opencode"
+  ]
+}

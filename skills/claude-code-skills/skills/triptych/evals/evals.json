@@ -1,0 +1,23 @@
+{
+  "skill_name": "triptych",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "/triptych the Insights screen in ~/lore-keep/KeepApp — I want it to feel premium and calm but I'm not sure if it should be a dashboard of tiles or something more editorial. Dark-only, don't touch the LORE. brutalist headline voice.",
+      "expected_output": "Three named theses with declared axis positions (pairwise >=3/6 different), three working variants behind a switcher on an isolated branch, real simulator screenshots + a short video per concept saved under design/triptych/, and a Pick Sheet presented inline that stops and asks for a pick/hybrid — no winner implemented before the user answers.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "mock up a few versions of the hunt log screen so i can pick one. blindbuddy repo on my desktop. show me screenshots like last time",
+      "expected_output": "Skill triggers without the slash command; scope-locks the target and key states; captures the CURRENT hunt log screen as Concept 0 (the control) under the same conditions; builds 3 divergent concepts as real RN code beside the untouched incumbent (presentation-only contract, rename-and-wrap switcher); presents a side-by-side Pick Sheet including the incumbent and waits — 'keep current' offered as a legitimate pick.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "/triptych --n 2 the pricing page on the marketing site, one safe evolution vs one bold rethink, desktop viewport. The testimonial section is sacred.",
+      "expected_output": "Two concepts honoring --n 2 and the sacred element; fixed 1280x800 viewport for both captures; theses name a real loser each; Pick Sheet written to PICK-SHEET.md and shown inline; after a pick, loser + switcher deleted and the decision appended to PICK-SHEET.md.",
+      "files": []
+    }
+  ]
+}
