@@ -1,0 +1,15 @@
+.osamah-app.preview-workspace { grid-template-rows: 58px minmax(0, 1fr) 27px; }
+.preview-workspace .app-shell { min-block-size: 0; padding-block-start: 42px; }
+.preview-banner { position: absolute; z-index: 2; inset: 58px 0 auto; display: flex; align-items: center; gap: .55rem; padding: .55rem 1.2rem; color: var(--muted); background: color-mix(in srgb, var(--panel-raised) 88%, #d5a344 12%); border-block: 1px solid color-mix(in srgb, var(--border) 70%, #d5a344 30%); font-size: .82rem; }
+.preview-content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(17rem, .55fr); gap: 1rem; padding: 1.1rem; }
+.preview-stage, .preview-engines { padding: 1.35rem; }
+.preview-stage h1 { margin: .65rem 0 .55rem; font-size: clamp(1.35rem, 2.5vw, 2.1rem); }
+.preview-stage p, .preview-empty-state small { color: var(--muted); line-height: 1.7; }
+.preview-empty-state { display: grid; justify-items: start; gap: .5rem; margin-block-start: 1.5rem; padding: 1.3rem; border: 1px dashed var(--border); border-radius: .9rem; }
+.preview-engines h2 { margin-block: 0 .9rem; font-size: 1rem; }
+.preview-engines > div { display: grid; gap: .28rem; padding: .75rem 0; border-block-end: 1px solid var(--border); }
+.preview-engines > div:last-child { border-block-end: 0; }
+.preview-engines span { color: var(--muted); font-size: .78rem; }
+.preview-engines strong { font-size: .88rem; line-height: 1.5; }
+.preview-agent textarea { inline-size: 100%; resize: none; margin-block: 1rem .6rem; }
+@media (max-width: 900px) { .preview-content { grid-template-columns: 1fr; } }
