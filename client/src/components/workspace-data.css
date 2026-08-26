@@ -32,7 +32,9 @@
 }
 
 .project-create-form,
-.project-edit-form {
+.project-edit-form,
+.file-create-form,
+.file-rename-form {
   display: grid;
   gap: 0.55rem;
   border-block-end: 1px solid color-mix(in srgb, currentColor 9%, transparent);
@@ -41,7 +43,9 @@
 }
 
 .project-create-form label,
-.project-edit-form label {
+.project-edit-form label,
+.file-create-form label,
+.file-rename-form label {
   display: grid;
   gap: 0.3rem;
   color: var(--muted-foreground, #8fa0bf);
@@ -51,7 +55,9 @@
 .project-create-form input,
 .project-create-form textarea,
 .project-edit-form input,
-.project-edit-form textarea {
+.project-edit-form textarea,
+.file-create-form input,
+.file-rename-form input {
   box-sizing: border-box;
   min-inline-size: 0;
   inline-size: 100%;
@@ -76,8 +82,12 @@
 .project-create-form textarea:focus-visible,
 .project-edit-form input:focus-visible,
 .project-edit-form textarea:focus-visible,
+.file-create-form input:focus-visible,
+.file-rename-form input:focus-visible,
 .project-create-actions button:focus-visible,
-.project-edit-actions button:focus-visible {
+.project-edit-actions button:focus-visible,
+.file-create-actions button:focus-visible,
+.file-rename-actions button:focus-visible {
   outline: 2px solid color-mix(in srgb, #7ba1ff 68%, transparent);
   outline-offset: 2px;
 }
@@ -85,13 +95,17 @@
 .project-create-form input:focus-visible,
 .project-create-form textarea:focus-visible,
 .project-edit-form input:focus-visible,
-.project-edit-form textarea:focus-visible {
+.project-edit-form textarea:focus-visible,
+.file-create-form input:focus-visible,
+.file-rename-form input:focus-visible {
   border-color: color-mix(in srgb, #7ba1ff 76%, transparent);
   box-shadow: 0 0 0 3px color-mix(in srgb, #5e8cff 22%, transparent);
 }
 
 .project-create-actions,
-.project-edit-actions {
+.project-edit-actions,
+.file-create-actions,
+.file-rename-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -99,7 +113,9 @@
 }
 
 .project-create-actions button,
-.project-edit-actions button {
+.project-edit-actions button,
+.file-create-actions button,
+.file-rename-actions button {
   border: 1px solid color-mix(in srgb, #7ba1ff 42%, transparent);
   border-radius: 0.48rem;
   background: transparent;
@@ -111,24 +127,34 @@
 }
 
 .project-create-actions button[type="submit"],
-.project-edit-actions button[type="submit"] {
+.project-edit-actions button[type="submit"],
+.file-create-actions button[type="submit"],
+.file-rename-actions button[type="submit"] {
   border-color: color-mix(in srgb, #7ba1ff 58%, transparent);
   background: color-mix(in srgb, #5e8cff 26%, transparent);
   color: #dce7ff;
 }
 
 .project-create-actions button:not(:disabled):active,
-.project-edit-actions button:not(:disabled):active { transform: scale(0.97); }
+.project-edit-actions button:not(:disabled):active,
+.file-create-actions button:not(:disabled):active,
+.file-rename-actions button:not(:disabled):active { transform: scale(0.97); }
 .project-create-form input:disabled,
 .project-create-form textarea:disabled,
 .project-edit-form input:disabled,
 .project-edit-form textarea:disabled,
+.file-create-form input:disabled,
+.file-rename-form input:disabled,
 .project-create-actions button:disabled,
-.project-edit-actions button:disabled { cursor: not-allowed; opacity: 0.5; }
+.project-edit-actions button:disabled,
+.file-create-actions button:disabled,
+.file-rename-actions button:disabled { cursor: not-allowed; opacity: 0.5; }
 
 @media (prefers-reduced-motion: no-preference) {
   .project-create-form,
-  .project-edit-form { animation: project-metadata-form-enter 180ms var(--ease-out, ease-out) both; }
+  .project-edit-form,
+  .file-create-form,
+  .file-rename-form { animation: project-metadata-form-enter 180ms var(--ease-out, ease-out) both; }
   @keyframes project-metadata-form-enter {
     from { opacity: 0; transform: translateY(-0.25rem); }
     to { opacity: 1; transform: translateY(0); }

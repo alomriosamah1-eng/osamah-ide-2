@@ -194,6 +194,9 @@ try {
     content: "export const source = 'e2e';\n",
   });
   fileId = file.id;
+  if (file.path !== "src/main.ts" || file.name !== "main.ts" || file.language !== "TypeScript" || file.content !== "export const source = 'e2e';") {
+    throw new Error("File creation metadata was not persisted.");
+  }
 
   const savedFile = await client.workspace.file.save.mutate({ id: fileId, content: "export const source = 'saved';\n" });
   if (savedFile.content !== "export const source = 'saved';\n") throw new Error("File save was not persisted.");
