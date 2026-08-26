@@ -88,6 +88,16 @@ export const appRouter = router({
           if (!account) throw new TRPCError({ code: "NOT_FOUND", message: "No local account exists in this browser." });
           return { recoveryQuestion: account.account.recoveryQuestion };
         }),
+      verifyRecoveryAnswer: publicProcedure.input(z.object({
+        accountKey: z.string().uuid(),
+        recoveryAnswer: z.string().trim().min(1).max(256),
+      })).mutation(async ({ input }) => {
+        const account = await getLocalAccountByKey(input.accountKey);
+        if (!account || !await verifyRecoveryAnswer(input.recoveryAnswer, account.account.recoveryAnswerHash)) {
+          throw new TRPCError({ code: "UNAUTHORIZED", message: "Local account recovery verification failed." });
+        }
+        return { verified: true } as const;
+      }),
       resetPassword: publicProcedure.input(z.object({
         accountKey: z.string().uuid(),
         recoveryAnswer: z.string().trim().min(1).max(256),

@@ -25,6 +25,7 @@ export type SavedPreferences = {
 };
 
 export type AccountProfile = { name: string | null; email: string | null } | null | undefined;
+export type ProfilePatch = { name?: string; email?: string };
 export type PreferencePatch = Partial<{
   language: Language;
   theme: "light" | "dark";
@@ -32,6 +33,15 @@ export type PreferencePatch = Partial<{
   desktopNotifications: boolean;
   agentMode: "guided" | "review" | "manual";
 }>;
+
+export function buildProfilePatch(name: string, email: string): ProfilePatch | null {
+  const nextName = name.trim();
+  const nextEmail = email.trim();
+  const patch: ProfilePatch = {};
+  if (nextName) patch.name = nextName;
+  if (nextEmail) patch.email = nextEmail;
+  return Object.keys(patch).length ? patch : null;
+}
 
 function Toggle({ checked, label, onChange }: { checked: boolean; label: string; onChange: (checked: boolean) => void }) {
   return <label className="toggle"><input aria-label={label} type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} /><span /></label>;
@@ -47,7 +57,7 @@ export default function ServerSettingsView({ lang, theme, onThemeChange, onLangu
   isSaving: boolean;
   errorMessage?: string;
   onPreferenceChange: (input: PreferencePatch) => void;
-  onProfileSave: (input: { name: string; email: string }) => void;
+  onProfileSave: (input: ProfilePatch) => void;
 }) {
   const isAr = lang === "ar";
   const [active, setActive] = useState<SettingsSection>("general");
@@ -63,12 +73,13 @@ export default function ServerSettingsView({ lang, theme, onThemeChange, onLangu
     : [{ id: "general" as const, label: "General", icon: UserRound }, { id: "appearance" as const, label: "Appearance", icon: SlidersHorizontal }, { id: "workspace" as const, label: "Workspace", icon: LayoutDashboard }, { id: "agents" as const, label: "Agents & AI", icon: Bot }, { id: "notifications" as const, label: "Notifications", icon: Bell }, { id: "integrations" as const, label: "Integrations", icon: PlugZap }, { id: "security" as const, label: "Security & privacy", icon: ShieldCheck }];
   const settingRow = (title: string, detail: string, control: React.ReactNode) => <div className="setting-row"><div><strong>{title}</strong><span>{detail}</span></div>{control}</div>;
   const selected = sections.find((section) => section.id === active)!;
+  const profilePatch = buildProfilePatch(name, email);
   const header = isAr
     ? { general: ["ملفك الشخصي", "الإعدادات العامة", "بيانات الحساب واللغة محفوظة على الخادم."], appearance: ["التخصيص", "المظهر", "المظهر المختار محفوظ للحساب."], workspace: ["بيئة العمل", "مساحة العمل", "حدود الملكية والتعاون الحالية."], agents: ["OpenCode", "سياسة الوكيل", "الأسلوب المحفوظ قبل توفر التنفيذ."], notifications: ["الانتباه", "الإشعارات", "تفضيلات قابلة للحفظ بلا قناة تسليم حالياً."], integrations: ["التدفق المتصل", "التكاملات", "حالات الموصلات الفعلية فقط."], security: ["الثقة", "الأمان والخصوصية", "حدود حماية الحساب المحلي."] }
     : { general: ["Your profile", "General settings", "Account data and language are server-saved."], appearance: ["Customization", "Appearance", "The selected appearance is saved per account."], workspace: ["Work environment", "Workspace", "Current ownership and collaboration boundaries."], agents: ["OpenCode", "Agent policy", "The saved mode before execution is available."], notifications: ["Attention", "Notifications", "Saved preferences with no delivery channel yet."], integrations: ["Connected flow", "Integrations", "Only real connector states are shown."], security: ["Trust", "Security & privacy", "Protection boundaries of the local account."] };
 
   const panel = () => {
-    if (active === "general") return <div className="settings-stack"><div className="profile-summary"><span>{(name || "OS").slice(0, 2).toUpperCase()}</span><div><strong>{name || (isAr ? "الحساب المحلي" : "Local account")}</strong><small>{isAr ? "بيانات الحساب محفوظة خادمياً." : "Account data is stored server-side."}</small></div></div><div className="settings-form-grid"><label>{isAr ? "الاسم الظاهر" : "Display name"}<input value={name} onChange={(event) => setName(event.target.value)} /></label><label>{isAr ? "البريد الإلكتروني" : "Email address"}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label></div><button disabled={isSaving || !name.trim() || !email.trim()} onClick={() => onProfileSave({ name, email })} className="secondary-settings-button">{isSaving ? (isAr ? "جارٍ الحفظ…" : "Saving…") : (isAr ? "حفظ الملف" : "Save profile")}</button>{settingRow(isAr ? "لغة التطبيق" : "Application language", isAr ? "تُحفظ لغة الواجهة واتجاهها للحساب الحالي." : "The interface language and direction are saved for this account.", <div className="segmented"><button onClick={() => onLanguageChange("en")} className={lang === "en" ? "selected" : ""}>English</button><button onClick={() => onLanguageChange("ar")} className={lang === "ar" ? "selected" : ""}>العربية</button></div>)}</div>;
+    if (active === "general") return <div className="settings-stack"><div className="profile-summary"><span>{(name || "OS").slice(0, 2).toUpperCase()}</span><div><strong>{name || (isAr ? "الحساب المحلي" : "Local account")}</strong><small>{isAr ? "الاسم والبريد بيانات اختيارية محفوظة خادمياً." : "Display name and email are optional server-saved metadata."}</small></div></div><div className="settings-form-grid"><label>{isAr ? "الاسم الظاهر (اختياري)" : "Display name (optional)"}<input value={name} onChange={(event) => setName(event.target.value)} /></label><label>{isAr ? "البريد الإلكتروني (اختياري)" : "Email address (optional)"}<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label></div><button disabled={isSaving || !profilePatch} onClick={() => { if (profilePatch) onProfileSave(profilePatch); }} className="secondary-settings-button">{isSaving ? (isAr ? "جارٍ الحفظ…" : "Saving…") : (isAr ? "حفظ الملف" : "Save profile")}</button>{settingRow(isAr ? "لغة التطبيق" : "Application language", isAr ? "تُحفظ لغة الواجهة واتجاهها للحساب الحالي." : "The interface language and direction are saved for this account.", <div className="segmented"><button onClick={() => onLanguageChange("en")} className={lang === "en" ? "selected" : ""}>English</button><button onClick={() => onLanguageChange("ar")} className={lang === "ar" ? "selected" : ""}>العربية</button></div>)}</div>;
     if (active === "appearance") return <div className="settings-stack">{settingRow(isAr ? "سمة التطبيق" : "Application theme", isAr ? "يُحفظ المظهر المختار للحساب الحالي." : "The selected appearance is saved for this account.", <div className="theme-options"><button onClick={() => onThemeChange("light")} className={`theme-option ${theme === "light" ? "selected" : ""}`}><Sun size={12} /> {isAr ? "فاتح" : "Light"}</button><button onClick={() => onThemeChange("dark")} className={`theme-option ${theme === "dark" ? "selected" : ""}`}><Moon size={12} /> {isAr ? "داكن" : "Dark"}</button></div>)}<div className="settings-note"><p>{isAr ? "الحركة غير الضرورية تحترم تفضيل تقليل الحركة في نظام التشغيل. لا توجد تفضيلات كثافة أو ألوان مخصصة محفوظة بعد." : "Non-essential motion respects the operating system’s reduced-motion preference. Density and custom accent preferences are not stored yet."}</p></div></div>;
     if (active === "workspace") return <div className="settings-stack">{settingRow(isAr ? "ملكية البيانات" : "Data ownership", isAr ? "المشاريع والملفات والمهام تخص الحساب الحالي فقط." : "Projects, files, and tasks belong only to the current account.", <div className="setting-value"><ShieldCheck size={14} /> {isAr ? "محمي" : "Protected"}</div>)}<div className="settings-note"><p>{isAr ? "دعوات المتعاونين ومشاركة مساحة العمل غير مهيأة بعد؛ لا يظهر مفتاح مشاركة شكلي." : "Collaborator invitations and workspace sharing are not configured; no cosmetic sharing toggle is shown."}</p></div></div>;
     if (active === "agents") return <div className="settings-stack"><div className="agent-config-card"><div><span className="eyebrow">OpenCode</span><strong>OpenCode</strong><p>{isAr ? "التنفيذ يتطلب خدمة OpenCode ومزوّد نماذج مهيأين على الخادم. لا يوجد نموذج نشط حالياً." : "Execution requires server-side OpenCode and a configured model provider. No active model is available currently."}</p></div><span className="agent-config-orbit"><Bot size={24} /></span></div>{settingRow(isAr ? "أسلوب الإشراف" : "Supervision mode", isAr ? "موجّه: يحفظ السياق. مراجعة: لا تغييرات قبل المراجعة. يدوي: لا تنفيذ تلقائي." : "Guided keeps context. Review requires review before changes. Manual performs no automatic action.", <div className="segmented"><button onClick={() => onPreferenceChange({ agentMode: "guided" })} className={preferences?.agentMode === "guided" ? "selected" : ""}>{isAr ? "موجّه" : "Guided"}</button><button onClick={() => onPreferenceChange({ agentMode: "review" })} className={preferences?.agentMode === "review" ? "selected" : ""}>{isAr ? "مراجعة" : "Review"}</button><button onClick={() => onPreferenceChange({ agentMode: "manual" })} className={preferences?.agentMode === "manual" ? "selected" : ""}>{isAr ? "يدوي" : "Manual"}</button></div>)}</div>;

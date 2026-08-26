@@ -43,6 +43,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
     { accountKey },
     { enabled: false, retry: false },
   );
+  const localVerifyRecoveryAnswer = trpc.auth.local.verifyRecoveryAnswer.useMutation();
   const localResetPassword = trpc.auth.local.resetPassword.useMutation();
 
   const isAr = language === "ar";
@@ -116,6 +117,7 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
         return;
       }
       if (mode === "recover-answer") {
+        await localVerifyRecoveryAnswer.mutateAsync({ accountKey, recoveryAnswer: answer });
         setMode("recover-reset");
         return;
       }
@@ -161,10 +163,10 @@ export default function AuthGate({ onAuthenticated }: { onAuthenticated: () => v
         </AnimatePresence>
         <form onSubmit={submit} className="auth-form" dir={isAr ? "rtl" : "ltr"} lang={isAr ? "ar" : "en"}>
           <AnimatePresence mode="popLayout">
-            {mode === "register" && <motion.label {...fieldMotion} className="auth-field"><span>{content.question}</span><div><ShieldCheck size={15} /><select value={question} onFocus={() => setActiveField("recovery")} onBlur={() => setActiveField(null)} onChange={(event) => setQuestion(event.target.value)}>{questions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div></motion.label>}
-            {(mode === "register" || mode === "recover-answer") && <motion.label {...fieldMotion} className="auth-field"><span>{mode === "recover-answer" ? recoveryPrompt || content.question : content.answer}</span><div><KeyRound size={15} /><input value={answer} onFocus={() => setActiveField("answer")} onBlur={() => setActiveField(null)} onChange={(event) => { setAnswer(event.target.value); clearFeedback(); }} autoComplete="off" required /></div><small>{content.answerHint}</small></motion.label>}
-            {(mode === "login" || mode === "register" || mode === "recover-reset") && <motion.label {...fieldMotion} className="auth-field"><span>{content.password}</span><div><LockKeyhole size={15} /><input type={showPassword ? "text" : "password"} value={password} onFocus={() => setActiveField("password")} onBlur={() => setActiveField(null)} onChange={(event) => { setPassword(event.target.value); clearFeedback(); }} autoComplete={mode === "login" ? "current-password" : "new-password"} required /><button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button></div><small>{mode === "login" ? "" : content.passwordHint}</small></motion.label>}
-            {(mode === "register" || mode === "recover-reset") && <motion.label {...fieldMotion} className="auth-field"><span>{content.confirm}</span><div><CheckCircle2 size={15} /><input type={showPassword ? "text" : "password"} value={confirmPassword} onFocus={() => setActiveField("confirmation")} onBlur={() => setActiveField(null)} onChange={(event) => { setConfirmPassword(event.target.value); clearFeedback(); }} autoComplete="new-password" required /></div></motion.label>}
+            {mode === "register" && <motion.label key="recovery-question" {...fieldMotion} className="auth-field"><span>{content.question}</span><div><ShieldCheck size={15} /><select value={question} onFocus={() => setActiveField("recovery")} onBlur={() => setActiveField(null)} onChange={(event) => setQuestion(event.target.value)}>{questions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select></div></motion.label>}
+            {(mode === "register" || mode === "recover-answer") && <motion.label key="recovery-answer" {...fieldMotion} className="auth-field"><span>{mode === "recover-answer" ? recoveryPrompt || content.question : content.answer}</span><div><KeyRound size={15} /><input value={answer} onFocus={() => setActiveField("answer")} onBlur={() => setActiveField(null)} onChange={(event) => { setAnswer(event.target.value); clearFeedback(); }} autoComplete="off" required /></div><small>{content.answerHint}</small></motion.label>}
+            {(mode === "login" || mode === "register" || mode === "recover-reset") && <motion.label key="password" {...fieldMotion} className="auth-field"><span>{content.password}</span><div><LockKeyhole size={15} /><input type={showPassword ? "text" : "password"} value={password} onFocus={() => setActiveField("password")} onBlur={() => setActiveField(null)} onChange={(event) => { setPassword(event.target.value); clearFeedback(); }} autoComplete={mode === "login" ? "current-password" : "new-password"} required /><button type="button" onClick={() => setShowPassword((current) => !current)} aria-label={showPassword ? "Hide password" : "Show password"}>{showPassword ? <EyeOff size={15} /> : <Eye size={15} />}</button></div><small>{mode === "login" ? "" : content.passwordHint}</small></motion.label>}
+            {(mode === "register" || mode === "recover-reset") && <motion.label key="password-confirmation" {...fieldMotion} className="auth-field"><span>{content.confirm}</span><div><CheckCircle2 size={15} /><input type={showPassword ? "text" : "password"} value={confirmPassword} onFocus={() => setActiveField("confirmation")} onBlur={() => setActiveField(null)} onChange={(event) => { setConfirmPassword(event.target.value); clearFeedback(); }} autoComplete="new-password" required /></div></motion.label>}
           </AnimatePresence>
           <AnimatePresence>{feedback && <motion.div className={`auth-feedback ${feedback.type}`} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}><span>{feedback.type === "success" ? <CheckCircle2 size={15} /> : <ShieldCheck size={15} />}</span>{feedback.text}</motion.div>}</AnimatePresence>
           <motion.button whileTap={{ scale: 0.975 }} whileHover={{ y: -1 }} className="auth-submit" disabled={submitting} type="submit">{submitting ? content.processing : actionLabel}<DirectionArrow size={16} /></motion.button>

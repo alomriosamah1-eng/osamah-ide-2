@@ -29,6 +29,28 @@ const client = createTRPCProxyClient({
   links: [httpBatchLink({ url: `${baseUrl}/api/trpc`, transformer: superjson, fetch: cookieFetch })],
 });
 
+function createIsolatedClient() {
+  let isolatedCookie = "";
+  const isolatedFetch = async (url, options = {}) => {
+    const headers = new Headers(options.headers);
+    if (isolatedCookie) headers.set("cookie", isolatedCookie);
+    const response = await fetch(url, { ...options, headers });
+    const values = typeof response.headers.getSetCookie === "function"
+      ? response.headers.getSetCookie()
+      : [response.headers.get("set-cookie")].filter(Boolean);
+    for (const value of values) {
+      const [pair] = value.split(";");
+      if (!pair) continue;
+      const separator = pair.indexOf("=");
+      isolatedCookie = separator === -1 ? "" : pair;
+    }
+    return response;
+  };
+  return createTRPCProxyClient({
+    links: [httpBatchLink({ url: `${baseUrl}/api/trpc`, transformer: superjson, fetch: isolatedFetch })],
+  });
+}
+
 const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const accountKey = crypto.randomUUID();
 const updatedEmail = `workspace-e2e-updated-${suffix}@example.invalid`;
@@ -56,6 +78,14 @@ try {
   if (recoveryQuestion.recoveryQuestion !== "اسم هذا التحقق؟") {
     throw new Error("The local recovery question was not persisted without name or email.");
   }
+  try {
+    await client.auth.local.verifyRecoveryAnswer.mutate({ accountKey, recoveryAnswer: "إجابة خاطئة" });
+    throw new Error("Recovery verification accepted an incorrect answer.");
+  } catch (error) {
+    if (error?.message === "Recovery verification accepted an incorrect answer.") throw error;
+  }
+  const verifiedRecovery = await client.auth.local.verifyRecoveryAnswer.mutate({ accountKey, recoveryAnswer: "Osamah" });
+  if (!verifiedRecovery.verified) throw new Error("Recovery verification did not confirm the saved answer.");
 
   const initialPreferences = await client.preferences.get.query();
   if (initialPreferences.language !== "ar" || initialPreferences.theme !== "dark") {
@@ -70,6 +100,13 @@ try {
   });
   if (updatedPreferences.language !== "en" || updatedPreferences.theme !== "light" || updatedPreferences.emailNotifications !== 0 || updatedPreferences.desktopNotifications !== 0 || updatedPreferences.agentMode !== "review") {
     throw new Error("Server preference update was not persisted.");
+  }
+
+  const nameOnlyProfile = await client.auth.local.updateProfile.mutate({
+    name: "Workspace E2E Name Only",
+  });
+  if (nameOnlyProfile.name !== "Workspace E2E Name Only" || nameOnlyProfile.email !== null) {
+    throw new Error("Local profile did not persist a single optional display name.");
   }
 
   const updatedProfile = await client.auth.local.updateProfile.mutate({
@@ -162,6 +199,29 @@ try {
   if (!tasks.some(item => item.id === taskId && item.status === "done")) throw new Error("Updated task was not listed.");
   if (!activity.some(item => item.entityType === "project" && item.entityId === projectId)) throw new Error("Workspace activity was not recorded.");
 
+  const isolatedClient = createIsolatedClient();
+  await isolatedClient.auth.local.register.mutate({
+    accountKey: crypto.randomUUID(),
+    password: `Isolated-${suffix}-Secure`,
+    recoveryQuestion: "Isolated audit account?",
+    recoveryAnswer: "Yes",
+  });
+  const isolatedProjects = await isolatedClient.workspace.project.list.query();
+  if (isolatedProjects.some(item => item.id === projectId)) throw new Error("Workspace project leaked into another local account.");
+  for (const [label, operation] of [
+    ["project update", () => isolatedClient.workspace.project.update.mutate({ id: projectId, name: "Unauthorized" })],
+    ["file save", () => isolatedClient.workspace.file.save.mutate({ id: fileId, content: "Unauthorized" })],
+    ["task update", () => isolatedClient.workspace.task.update.mutate({ id: taskId, status: "todo" })],
+  ]) {
+    let rejected = false;
+    try {
+      await operation();
+    } catch {
+      rejected = true;
+    }
+    if (!rejected) throw new Error(`Workspace ${label} accepted a different local account.`);
+  }
+
   const note = await client.secondBrain.item.create.mutate({
     title: "E2E Second Brain Note",
     kind: "note",
@@ -204,6 +264,21 @@ try {
   if (materialized.created.length !== 1) throw new Error("Second Brain did not materialize exactly one task.");
   secondBrainTaskIds = materialized.created.map(item => item.id);
 
+  for (const [label, operation] of [
+    ["presentation update", () => isolatedClient.presentations.update.mutate({ id: presentationId, title: "Unauthorized" })],
+    ["presentation slide update", () => isolatedClient.presentations.slide.update.mutate({ id: presentationSlideId, title: "Unauthorized" })],
+    ["knowledge item update", () => isolatedClient.secondBrain.item.update.mutate({ id: noteId, title: "Unauthorized" })],
+    ["knowledge link update", () => isolatedClient.secondBrain.link.update.mutate({ id: knowledgeLinkId, label: "Unauthorized" })],
+  ]) {
+    let rejected = false;
+    try {
+      await operation();
+    } catch {
+      rejected = true;
+    }
+    if (!rejected) throw new Error(`${label} accepted a different local account.`);
+  }
+
   await Promise.all(secondBrainTaskIds.map(id => client.workspace.task.remove.mutate({ id })));
   secondBrainTaskIds = [];
   await client.secondBrain.link.remove.mutate({ id: knowledgeLinkId });
@@ -231,7 +306,7 @@ try {
   if (cookie) throw new Error("Logout did not clear the local session cookie.");
 
   console.log(JSON.stringify({
-    verified: ["local-password-recovery-registration", "server-preferences-create-update", "local-profile-update", "presenton-source-status", "presentation-create-rename-delete", "presentation-slide-create-update-reorder-delete", "project-create-update-delete", "file-create-save-rename-delete", "task-create-update-delete", "activity-log", "second-brain-note-task-extraction", "second-brain-search", "second-brain-link-create-update-delete", "second-brain-self-link-rejected"],
+    verified: ["local-password-recovery-registration", "server-preferences-create-update", "local-profile-update", "presenton-source-status", "presentation-create-rename-delete", "presentation-slide-create-update-reorder-delete", "workspace-cross-account-isolation", "presentation-cross-account-isolation", "project-create-update-delete", "file-create-save-rename-delete", "task-create-update-delete", "activity-log", "second-brain-note-task-extraction", "second-brain-search", "second-brain-link-create-update-delete", "second-brain-self-link-rejected", "second-brain-cross-account-isolation"],
     cleanedWorkspaceContent: true,
   }, null, 2));
 } catch (error) {
