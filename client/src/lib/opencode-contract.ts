@@ -50,6 +50,18 @@ export function getOpenCodeModel(catalog: OpenCodeModelCatalog, value: string): 
 }
 
 /**
+ * Labels the picker honestly: a discovered catalog still needs an explicit user
+ * choice, while an empty catalog is the only state that is actually waiting.
+ */
+export function getOpenCodeModelPlaceholder(input: { hasDiscoveredModels: boolean; language: "ar" | "en" }): string {
+  if (input.hasDiscoveredModels) {
+    return input.language === "ar" ? "اختر نموذج OpenCode" : "Choose an OpenCode model";
+  }
+
+  return input.language === "ar" ? "بانتظار نماذج OpenCode" : "Waiting for OpenCode models";
+}
+
+/**
  * Converts only the model records returned by Osamah's server-side OpenCode
  * gateway. There is deliberately no fallback provider or model list.
  */

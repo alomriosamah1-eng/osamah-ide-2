@@ -8,10 +8,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { filterWorkspaceCommands, getWorkspaceCommands } from "@/lib/command-palette";
-import { catalogFromEmbeddedOpenCode, getOpenCodeModel, initialOpenCodeCatalog } from "@/lib/opencode-contract";
+import { catalogFromEmbeddedOpenCode, getOpenCodeModel, getOpenCodeModelPlaceholder, initialOpenCodeCatalog } from "@/lib/opencode-contract";
 import { cn } from "@/lib/utils";
 import { trpc } from "@/lib/trpc";
 import { getOrCreateOpenCodeSession } from "@/lib/opencode-session";
+import { getWorkspaceHelpEnginePhase } from "@/lib/workspace-help";
 import ServerSettingsView, { type PreferencePatch, type SavedPreferences } from "@/components/ServerSettingsView";
 import PresentationStudio from "@/components/PresentationStudio";
 import "./opencode-model.css";
@@ -226,6 +227,50 @@ function activitySummary(action: string, entityType: string, lang: Language) {
     ? { project: "مشروع", file: "ملف", directory: "مجلد", task: "مهمة", knowledge: "عنصر معرفة", link: "رابط معرفة", presentation: "عرض", slide: "شريحة" }
     : { project: "project", file: "file", directory: "folder", task: "task", knowledge: "knowledge item", link: "knowledge link", presentation: "presentation", slide: "slide" };
   return `${actions[action] ?? action} ${entities[entityType] ?? entityType}`;
+}
+
+function localizeEngineHelp(engineId: string, status: string, isAr: boolean) {
+  const names: Record<string, [string, string]> = {
+    opencode: ["OpenCode", "OpenCode"],
+    theia: ["Eclipse Theia", "Eclipse Theia"],
+    presenton: ["Presenton", "Presenton"],
+    "second-brain": ["العقل الثاني", "Second Brain"],
+  };
+  const labels: Record<string, [string, string]> = {
+    ready: ["جاهز", "Ready"],
+    available: ["متاح", "Available"],
+    "needs-configuration": ["يتطلب إعداداً", "Needs configuration"],
+    "build-required": ["يتطلب بناء التطبيق", "Application build required"],
+    unavailable: ["غير متاح", "Unavailable"],
+    stopped: ["متوقف", "Stopped"],
+  };
+  const descriptions: Record<string, Record<string, [string, string]>> = {
+    opencode: {
+      ready: ["المزود والنموذج المكتشفان متاحان لجلسة وكيل مصادَق عليها.", "A discovered provider and model are available for an authenticated agent session."],
+      "needs-configuration": ["المحرك سليم لكن يلزم نموذج مفعّل أو تمكين خادمي.", "The runtime is healthy but needs an enabled model or server-side enablement."],
+      unavailable: ["لم تتوفر واجهة OpenCode الحية.", "The live OpenCode endpoint is unavailable."],
+    },
+    theia: {
+      "build-required": ["المصدر موجود، لكن تطبيق المتصفح لم يُبنَ بعد.", "The source is present, but the browser application has not been built yet."],
+      stopped: ["تطبيق المتصفح مبني لكنه غير مشغّل حالياً.", "The browser application is built but is not currently running."],
+      ready: ["بيئة التطوير في المتصفح جاهزة.", "The browser IDE environment is ready."],
+    },
+    presenton: {
+      "needs-configuration": ["واجهة الصحة متاحة، لكن التوليد والتصدير يحتاجان إعداد مزود معتمد.", "The health endpoint is available, but generation and export need an approved provider configuration."],
+      ready: ["خدمة العروض والتوليد مهيأة.", "Presentation generation is configured and ready."],
+      unavailable: ["خدمة العروض غير متاحة حالياً.", "The presentation service is currently unavailable."],
+    },
+    "second-brain": {
+      available: ["مستخرج المهام وعمليات المعرفة الخادمية متاحان.", "The task extractor and server-backed knowledge operations are available."],
+      unavailable: ["مصدر العقل الثاني أو مهايئه الخادمي غير متاح.", "The Second Brain source or server adapter is unavailable."],
+    },
+  };
+  const localeIndex = isAr ? 0 : 1;
+  return {
+    name: (names[engineId] ?? [engineId, engineId])[localeIndex],
+    status: (labels[status] ?? [status, status])[localeIndex],
+    detail: (descriptions[engineId]?.[status] ?? ["تتوفر الحالة الخادمية الحالية فقط.", "Only the current server status is available."])[localeIndex],
+  };
 }
 
 function activityTime(value: Date | string, lang: Language) {
@@ -505,7 +550,7 @@ function AgentPanel({ workspace, lang, collapsed, onCollapse }: { workspace: Wor
             </div>
             <Select value={selectedModelValue} onValueChange={(value) => { activeSessionId.current = null; setPendingPermissions([]); setSelectedModelValue(value); }} disabled={modelCatalog.models.length === 0 || isChatBusy}>
               <SelectTrigger className="opencode-model-trigger" size="sm" aria-label={isAr ? "اختيار نموذج OpenCode" : "Choose an OpenCode model"}>
-                <SelectValue placeholder={isAr ? "بانتظار نماذج OpenCode" : "Waiting for OpenCode models"} />
+                <SelectValue placeholder={getOpenCodeModelPlaceholder({ hasDiscoveredModels: modelCatalog.models.length > 0, language: lang })} />
               </SelectTrigger>
               <SelectContent className="opencode-model-content" align={isAr ? "start" : "end"} dir={isAr ? "rtl" : "ltr"}>
                 {modelCatalog.models.map((model) => (
@@ -982,6 +1027,7 @@ export default function OsamahWorkspace() {
   const [workspace, setWorkspace] = useState<Workspace>("dashboard");
   const [isAICollapsed, setAIcollapsed] = useState(false);
   const [commandOpen, setCommandOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const { theme, setTheme } = useTheme();
   const utils = trpc.useUtils();
@@ -991,6 +1037,7 @@ export default function OsamahWorkspace() {
   const projectsQuery = trpc.workspace.project.list.useQuery();
   const tasksQuery = trpc.workspace.task.list.useQuery();
   const opencodeStatusQuery = trpc.opencode.status.useQuery();
+  const enginesStatusQuery = trpc.engines.status.useQuery();
   const preferenceMutation = trpc.preferences.update.useMutation({
     onSuccess: (next) => utils.preferences.get.setData(undefined, next),
   });
@@ -1027,6 +1074,11 @@ export default function OsamahWorkspace() {
   const footerActiveTasks = (tasksQuery.data ?? []).filter((task) => task.status !== "done").length;
   const footerHasLoadError = Boolean(projectsQuery.error || tasksQuery.error || activityQuery.error);
   const footerIsLoading = projectsQuery.isLoading || tasksQuery.isLoading || activityQuery.isLoading;
+  const helpEnginePhase = getWorkspaceHelpEnginePhase({
+    isLoading: enginesStatusQuery.isLoading,
+    isError: enginesStatusQuery.isError,
+    engineCount: enginesStatusQuery.data?.engines.length ?? 0,
+  });
   const footerTone = footerHasLoadError ? "coral" : footerIsLoading ? "blue" : "green";
   const footerStatus = footerHasLoadError
     ? (isAr ? "تعذر تحميل بعض بيانات مساحة العمل" : "Some workspace data could not load")
@@ -1071,6 +1123,7 @@ export default function OsamahWorkspace() {
   const navigate = (next: Workspace) => {
     setWorkspace(next);
     setNotificationsOpen(false);
+    setHelpOpen(false);
   };
 
   const savePreference = (input: PreferencePatch) => preferenceMutation.mutate(input);
@@ -1109,7 +1162,7 @@ export default function OsamahWorkspace() {
       <div className="app-shell">
         <aside className="main-nav">
           <div className="nav-items">{navigation.map((item) => { const Icon = workspaceMeta[item.key].icon; return <button className={`nav-item ${workspace === item.key ? "nav-active" : ""}`} onClick={() => navigate(item.key)} key={item.key}><Icon size={18} /><span>{item.label}</span>{workspace === item.key && <i />}</button>; })}</div>
-          <div className="nav-bottom"><div className="nav-item nav-item-disabled" aria-disabled="true" title={isAr ? "مركز المساعدة غير مهيأ بعد" : "Help center is not configured yet"}><CircleHelp size={18} /><span>{isAr ? "المساعدة غير مهيأة" : "Help not configured"}</span></div><div className="connection-state"><Signal tone={footerTone} /><span>{footerStatus}</span></div></div>
+          <div className="nav-bottom"><button className="nav-item help-center-trigger" type="button" onClick={() => setHelpOpen(true)} aria-haspopup="dialog" aria-expanded={helpOpen}><CircleHelp size={18} /><span>{isAr ? "مركز المساعدة" : "Help center"}</span></button><div className="connection-state"><Signal tone={footerTone} /><span>{footerStatus}</span></div></div>
         </aside>
         <main className="main-workspace">
           <div className="context-bar"><div className="context-label"><WorkspaceIcon size={15} /><span>{t.workspace}</span><ChevronRight size={14} /><strong>{workspaceTitle}</strong></div><div className="context-states"><span><Folder size={13} /> {contextDetail}</span><span><Signal tone={opencodeStatusQuery.data?.health === "healthy" ? "green" : "amber"} /> {runtimeDetail}</span></div></div>
@@ -1119,6 +1172,7 @@ export default function OsamahWorkspace() {
       </div>
       <footer className="status-bar"><div><Signal tone={footerTone} /> {footerStatus}</div><div><span>{isAr ? "المشروع" : "Project"}: {footerProject}</span><span>{activityEntries.length} {isAr ? "أحداث" : "events"}</span><span><Bot size={12} /> {footerActiveTasks} {isAr ? "مهام نشطة" : "active tasks"}</span></div></footer>
       {commandOpen && <CommandPalette lang={language} onClose={() => setCommandOpen(false)} onNavigate={navigate} />}
+      {helpOpen && <div className="workspace-help-overlay" role="presentation" onMouseDown={() => setHelpOpen(false)}><section className="workspace-help-panel glass-panel" role="dialog" aria-modal="true" aria-labelledby="workspace-help-title" onMouseDown={(event) => event.stopPropagation()}><header><div><span><CircleHelp size={17} /> {isAr ? "مركز المساعدة" : "Help center"}</span><strong id="workspace-help-title">{isAr ? "مساعدة مرتبطة بمساحة العمل" : "Workspace-connected help"}</strong></div><button type="button" onClick={() => setHelpOpen(false)} aria-label={isAr ? "إغلاق المساعدة" : "Close help"}><X size={17} /></button></header><p>{isAr ? "هذه اللوحة تقرأ حالة المحرك وبيانات مساحة العمل الحالية؛ لا تعرض إجراءات تجريبية." : "This panel reads live engine and workspace state; it does not present demo actions."}</p><div className="workspace-help-runtime"><Signal tone={opencodeStatusQuery.data?.health === "healthy" ? "green" : "amber"} /><div><strong>{isAr ? "حالة OpenCode" : "OpenCode status"}</strong><span>{runtimeDetail}</span></div></div><div className="workspace-help-engines" aria-label={isAr ? "حالات المحركات" : "Engine states"}>{helpEnginePhase === "loading" ? <span className="workspace-help-loading">{isAr ? "تُحمّل حالات المحركات…" : "Loading engine states…"}</span> : helpEnginePhase === "error" ? <span className="workspace-operation-error" role="alert">{isAr ? "تعذر تحميل حالات المحركات. أعد فتح المساعدة للمحاولة مجدداً." : "Engine states could not be loaded. Reopen help to try again."}</span> : helpEnginePhase === "empty" ? <span className="workspace-help-loading">{isAr ? "لا توجد حالات محركات متاحة حالياً." : "No engine states are available right now."}</span> : enginesStatusQuery.data?.engines.map((engine) => { const localized = localizeEngineHelp(engine.id, engine.status, isAr); const tone = engine.agentReady ? "green" : engine.status === "available" ? "cyan" : "amber"; return <div className="workspace-help-engine" key={engine.id}><Signal tone={tone} /><div><strong>{localized.name} · {localized.status}</strong><span>{localized.detail}</span></div></div>; })}</div><div className="workspace-help-shortcuts"><span><Command size={15} /> {isAr ? "Ctrl / ⌘ + K: لوحة الأوامر" : "Ctrl / ⌘ + K: command palette"}</span><span><Bot size={15} /> {isAr ? "لوحة الوكيل على الجانب المقابل للمساحة" : "The agent panel is on the opposite side of the workspace"}</span></div><div className="workspace-help-links">{navigation.filter((item) => item.key !== workspace).map((item) => <button type="button" key={item.key} onClick={() => navigate(item.key)}>{isAr ? `فتح ${item.label}` : `Open ${item.label}`}<ChevronRight size={15} /></button>)}</div></section></div>}
     </div>
   );
 }
