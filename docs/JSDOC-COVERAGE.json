@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-26T01:05:36.530Z",
+  "generatedAt": "2026-08-26T01:24:49.183Z",
   "scope": "server/** excluding server/_core/**",
   "definition": "A production symbol is counted as documented when a JSDoc block immediately precedes its exported declaration.",
   "total": {

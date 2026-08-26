@@ -1,0 +1,81 @@
+/**
+ * Keeps Osamah IDE a desktop workspace even when the preview is opened from a
+ * narrow browser. The canvas stays horizontally scrollable instead of
+ * collapsing navigation and the agent into stacked rows.
+ */
+@media (max-width: 760px) {
+  html,
+  body,
+  #root {
+    min-width: 1024px;
+  }
+
+  body {
+    overflow-x: auto;
+  }
+
+  .osamah-app {
+    width: max(100vw, 1024px);
+    min-width: 1024px;
+    height: 100vh;
+    min-height: 680px;
+    grid-template-rows: 58px minmax(0, 1fr) 27px;
+    overflow: hidden;
+  }
+
+  .app-shell {
+    width: 100%;
+    min-width: 1024px;
+    grid-template-areas: "navigation workspace agent";
+    grid-template-columns: 167px minmax(0, 1fr) 271px;
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .main-nav {
+    grid-row: auto;
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 13px 10px 12px;
+    border-inline-end: 1px solid var(--line);
+    border-bottom: 0;
+  }
+
+  .main-nav .nav-items,
+  .main-nav .nav-bottom {
+    display: grid;
+    width: 100%;
+    flex: 0 0 auto;
+  }
+
+  .main-nav .nav-items {
+    gap: 3px;
+  }
+
+  .main-nav .nav-bottom {
+    gap: 10px;
+  }
+
+  .main-nav .nav-item {
+    width: 100%;
+    min-height: 36px;
+    padding-inline: 10px;
+  }
+
+  .main-workspace {
+    grid-row: auto;
+    min-height: 0;
+  }
+
+  .ai-panel {
+    grid-row: auto;
+    min-height: 0;
+    max-height: none;
+    border-top: 0;
+    border-inline-start: 1px solid var(--line);
+  }
+}
