@@ -15,6 +15,7 @@ import { getOrCreateOpenCodeSession, isOpenCodeSessionCleanupBlocked, reconcileO
 import { shouldConfirmUnsavedFileTransition, shouldConfirmUnsavedKnowledgeTransition, type UnsavedFileTransition, type UnsavedKnowledgeTransition } from "@/lib/unsaved-file-guard";
 import { getWorkspaceHelpEnginePhase } from "@/lib/workspace-help";
 import { getWorkspaceTaskBoardPhase, nextWorkspaceTaskStatus, type WorkspaceTaskStatus } from "@/lib/workspace-tasks";
+import { canCreateWorkspaceTask } from "@/lib/workspace-task-create";
 import ServerSettingsView, { type PreferencePatch, type SavedPreferences } from "@/components/ServerSettingsView";
 import PresentationStudio from "@/components/PresentationStudio";
 import "./opencode-model.css";
@@ -651,14 +652,32 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
   const presentations = presentationsQuery.data ?? [];
   const activeTasks = tasks.filter(task => task.status !== "done").length;
   const completedTasks = tasks.filter(task => task.status === "done").length;
+  const [taskDraftTitle, setTaskDraftTitle] = useState("");
+  const [selectedTaskProjectId, setSelectedTaskProjectId] = useState("");
   const [taskOperationError, setTaskOperationError] = useState<string | null>(null);
+  const [taskOperationNotice, setTaskOperationNotice] = useState<string | null>(null);
   const taskBoardPhase = getWorkspaceTaskBoardPhase({ isLoading: tasksQuery.isLoading, isError: tasksQuery.isError, count: tasks.length });
+  const taskCreateMutation = trpc.workspace.task.create.useMutation({
+    onSuccess: async () => {
+      setTaskOperationError(null);
+      setTaskOperationNotice(isAr ? "حُفظت المهمة. ستظهر بعد تحديث القائمة." : "The task was saved and will appear after the list refreshes.");
+      setTaskDraftTitle("");
+      setSelectedTaskProjectId("");
+      await utils.workspace.task.list.invalidate();
+      await utils.workspace.activity.list.invalidate();
+    },
+    onError: () => {
+      setTaskOperationNotice(null);
+      setTaskOperationError(isAr ? "تعذر إنشاء المهمة. حاول مجدداً." : "The task could not be created. Try again.");
+    },
+  });
+  const canSubmitTask = canCreateWorkspaceTask({ title: taskDraftTitle, isSubmitting: taskCreateMutation.isPending });
   const taskUpdateMutation = trpc.workspace.task.update.useMutation({
-    onSuccess: async () => { setTaskOperationError(null); await utils.workspace.task.list.invalidate(); await utils.workspace.activity.list.invalidate(); },
+    onSuccess: async () => { setTaskOperationError(null); setTaskOperationNotice(null); await utils.workspace.task.list.invalidate(); await utils.workspace.activity.list.invalidate(); },
     onError: () => setTaskOperationError(isAr ? "تعذر تحديث حالة المهمة. حاول مجدداً." : "The task status could not be updated. Try again."),
   });
   const taskRemoveMutation = trpc.workspace.task.remove.useMutation({
-    onSuccess: async () => { setTaskOperationError(null); await utils.workspace.task.list.invalidate(); await utils.workspace.activity.list.invalidate(); },
+    onSuccess: async () => { setTaskOperationError(null); setTaskOperationNotice(null); await utils.workspace.task.list.invalidate(); await utils.workspace.activity.list.invalidate(); },
     onError: () => setTaskOperationError(isAr ? "تعذر حذف المهمة. حاول مجدداً." : "The task could not be deleted. Try again."),
   });
   const taskStatusLabel = (status: WorkspaceTaskStatus) => {
@@ -748,6 +767,39 @@ function Dashboard({ lang, onNavigate, onCommand }: { lang: Language; onNavigate
           <span id="workspace-task-board-title">{isAr ? "مهام مساحة العمل" : "Workspace tasks"}</span>
         </SectionLabel>
         <p className="task-board-note">{isAr ? "كل مهمة تخص حسابك. انقر الحالة لتغييرها، أو احذفها من الخادم." : "Every task belongs to your account. Select its status to update it, or remove it from the server."}</p>
+        <form className="task-board-create" onSubmit={(event) => {
+          event.preventDefault();
+          if (!canSubmitTask) return;
+          setTaskOperationError(null);
+          setTaskOperationNotice(null);
+          taskCreateMutation.mutate({
+            title: taskDraftTitle.trim(),
+            projectId: selectedTaskProjectId ? Number(selectedTaskProjectId) : null,
+            status: "todo",
+          });
+        }}>
+          <label>
+            <span>{isAr ? "عنوان المهمة" : "Task title"}</span>
+            <input
+              aria-label={isAr ? "عنوان المهمة الجديدة" : "New task title"}
+              dir={isAr ? "rtl" : "ltr"}
+              maxLength={240}
+              onChange={(event) => setTaskDraftTitle(event.target.value)}
+              placeholder={isAr ? "اكتب مهمة قابلة للتنفيذ" : "Describe an actionable task"}
+              required
+              value={taskDraftTitle}
+            />
+          </label>
+          <label>
+            <span>{isAr ? "المشروع" : "Project"}</span>
+            <select aria-label={isAr ? "مشروع المهمة الجديدة" : "Project for the new task"} dir={isAr ? "rtl" : "ltr"} onChange={(event) => setSelectedTaskProjectId(event.target.value)} value={selectedTaskProjectId}>
+              <option value="">{isAr ? "مهمة عامة" : "General task"}</option>
+              {projects.map(project => <option key={project.id} value={String(project.id)}>{project.name}</option>)}
+            </select>
+          </label>
+          <button type="submit" disabled={!canSubmitTask}>{taskCreateMutation.isPending ? (isAr ? "يجري الحفظ…" : "Saving…") : (isAr ? "إضافة مهمة" : "Add task")}</button>
+        </form>
+        {taskOperationNotice ? <p className="task-board-notice" role="status">{taskOperationNotice}</p> : null}
         {taskBoardPhase === "loading" ? <p className="workspace-data-muted dashboard-empty-state">{isAr ? "يُحمّل المهام…" : "Loading tasks…"}</p> : null}
         {taskBoardPhase === "error" ? <div className="task-board-state"><p className="workspace-data-error">{isAr ? "تعذر تحميل المهام." : "Tasks could not be loaded."}</p><button type="button" className="text-action" onClick={() => void tasksQuery.refetch()}>{isAr ? "إعادة المحاولة" : "Retry"}</button></div> : null}
         {taskBoardPhase === "empty" ? <p className="workspace-data-muted dashboard-empty-state">{isAr ? "لا توجد مهام محفوظة. ستظهر المهام التي تنشئها أو تستخرجها هنا." : "No tasks are saved. Tasks you create or extract will appear here."}</p> : null}
