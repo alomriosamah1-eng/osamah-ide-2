@@ -58,5 +58,12 @@ try {
       headers: { Accept: "application/json" },
     });
     if (!deletion.ok) throw new Error(`OpenCode verification session cleanup failed (${deletion.status}).`);
+
+    const verifyAbsence = await fetch(`${endpoint}/api/session/${encodeURIComponent(sessionId)}`, {
+      headers: { Accept: "application/json" },
+    });
+    if (verifyAbsence.status !== 404) {
+      throw new Error(`OpenCode verification session must return 404 after deletion, received ${verifyAbsence.status}.`);
+    }
   }
 }

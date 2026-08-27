@@ -81,6 +81,9 @@ function resolveEmbeddedBunPath() {
   const configured = process.env.OPENCODE_BUN_PATH?.trim();
   if (configured) return configured;
 
+  const userBun = resolve(process.env.HOME || "/home/user", ".bun/bin/bun");
+  if (existsSync(userBun)) return userBun;
+
   const runtimeRoot = process.env.OPENCODE_BUN_ROOT?.trim() || resolve(process.env.HOME || "/home/ubuntu", ".opencode-runtime");
   try {
     const candidate = readdirSync(runtimeRoot, { withFileTypes: true })

@@ -47,7 +47,8 @@ export default function PresentationStudio({ lang }: { lang: Language }) {
   const [opencodeResponse, setOpencodeResponse] = useState("");
   const [opencodeBusy, setOpencodeBusy] = useState(false);
   const [awaitingAgentResponse, setAwaitingAgentResponse] = useState(false);
-  const createSession = trpc.opencode.session.create.useMutation({ onSuccess: d => setOpencodeSessionId(d.sessionID) });
+  const modelsQuery = trpc.opencode.models.useQuery(undefined, { retry: false });
+  const createSession = trpc.opencode.session.create.useMutation({ onSuccess: d => setOpencodeSessionId(d.id) });
   const sendToSession = trpc.opencode.session.send.useMutation({ onSuccess: () => { setOpencodeBusy(false); setOpencodeDraft(""); } });
   const msgQuery = trpc.opencode.session.messages.useQuery(opencodeSessionId ? { sessionID: opencodeSessionId } : skipToken, { enabled: Boolean(opencodeSessionId), retry: false });
 
@@ -60,19 +61,21 @@ export default function PresentationStudio({ lang }: { lang: Language }) {
   };
 
   useEffect(() => {
-    if (awaitingAgentResponse && msgQuery.data && msgQuery.data.messages) {
-      const lastMsg = msgQuery.data.messages[msgQuery.data.messages.length - 1];
-      if (lastMsg && lastMsg.role === "assistant" && lastMsg.content && typeof lastMsg.content === "string") {
-        const text = lastMsg.content.trim();
+    if (awaitingAgentResponse && Array.isArray(msgQuery.data) && msgQuery.data.length > 0) {
+      const lastMsg = msgQuery.data[msgQuery.data.length - 1];
+      if (lastMsg && lastMsg.role === "assistant" && typeof lastMsg.text === "string") {
+        const text = lastMsg.text.trim();
         if (text) {
           setDraftContent(text);
-          saveSlide();
+          if (selectedSlide) {
+            updateSlide.mutate({ id: selectedSlide.id, title: draftTitle.trim() || null, content: text, speakerNotes: draftNotes });
+          }
         }
       }
       setAwaitingAgentResponse(false);
       setOpencodeBusy(false);
     }
-  }, [msgQuery.data, awaitingAgentResponse]);
+  }, [msgQuery.data, awaitingAgentResponse, selectedSlide, draftTitle, draftNotes]);
 
   const askOpenCode = async () => {
     const text = opencodeDraft.trim();
@@ -81,22 +84,27 @@ export default function PresentationStudio({ lang }: { lang: Language }) {
     try {
       let sid = opencodeSessionId;
       if (!sid) {
-        const modelRes = await trpc.opencode.models.useQuery();
-        const discovered = modelRes.data ?? [];
-        const model = discovered.find((m: any) => m.providerID === "opencode" && m.id === "x-preview-f-free") ?? discovered[0];
-        if (!model) { setOpencodeResponse(isAr ? "لم يُكتشف نموذج OpenCode." : "No OpenCode model discovered."); setOpencodeBusy(false); return; }
+        const discovered = modelsQuery.data ?? [];
+        const model = discovered.find((m) => m.providerID === "opencode" && m.id === "x-preview-f-free") ?? discovered[0];
+        if (!model) {
+          setOpencodeResponse(isAr ? "لم يُكتشف نموذج OpenCode." : "No OpenCode model discovered.");
+          setOpencodeBusy(false);
+          return;
+        }
         const res = await createSession.mutateAsync({ model: { id: model.id, providerID: model.providerID, variant: model.variant } });
-        sid = res.sessionID;
+        sid = res.id;
         setOpencodeSessionId(sid);
       }
       const contextText = `${isAr ? "العرض: " : "Deck: "}${selectedDeck?.title ?? "—"} | ${isAr ? "شريحة: " : "Slide: "}${selectedSlide?.title ?? "—"} | ${isAr ? "المحتوى: " : "Content: "}${selectedSlide?.content ?? "—"}`;
       await sendToSession.mutateAsync({ sessionID: sid, text: text + "\n" + contextText, section: "presentations" });
       setAwaitingAgentResponse(true);
       setOpencodeResponse(isAr ? "جارٍ استقبال الرد من الوكيل..." : "Receiving agent response...");
-      setTimeout(() => { msgQuery.refetch(); }, 2500);
+      setTimeout(() => { void msgQuery.refetch(); }, 2500);
     } catch (e: any) {
       setOpencodeResponse(isAr ? "فشل الإرسال: " + (e.message ?? "") : "Send failed: " + (e.message ?? ""));
-    } finally { setOpencodeBusy(false); }
+    } finally {
+      setOpencodeBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -186,7 +194,7 @@ export default function PresentationStudio({ lang }: { lang: Language }) {
           <textarea value={opencodeDraft} onChange={e => setOpencodeDraft(e.target.value)} disabled={opencodeBusy} rows={3} aria-label={isAr ? "رسالة للمساعد" : "Message to assistant"} placeholder={isAr ? "اسأل عن العرض أو الشريحة الحالية..." : "Ask about current deck or slide..."} />
           <button type="button" onClick={askOpenCode} disabled={opencodeBusy || !opencodeDraft.trim()} className="opencode-send-btn">{opencodeBusy ? (isAr ? "جارٍ الإرسال…" : "Sending...") : (isAr ? "إرسال إلى OpenCode" : "Send to OpenCode")}</button>
           {opencodeResponse ? <div className="opencode-response"><strong>{isAr ? "الرد / الحالة:" : "Response / Status:"}</strong> <span>{opencodeResponse}</span></div> : null}
-          {msgQuery.data?.messages && msgQuery.data.messages.length > 0 ? <div className="opencode-messages"><strong>{isAr ? "سجل الرسائل:" : "Message log:"}</strong><ul>{msgQuery.data.messages.map((m: any, i: number) => <li key={i} className={m.role === "assistant" ? "msg-assistant" : "msg-user"}><span className="msg-role">{m.role === "user" ? (isAr ? "أنت" : "You") : (isAr ? "الوكلاء" : "Agent")}</span><span className="msg-text">{m.content?.slice?.(0, 300) ?? m.content}</span></li>)}</ul></div> : null}
+          {Array.isArray(msgQuery.data) && msgQuery.data.length > 0 ? <div className="opencode-messages"><strong>{isAr ? "سجل الرسائل:" : "Message log:"}</strong><ul>{msgQuery.data.map((m, i) => <li key={i} className={m.role === "assistant" ? "msg-assistant" : "msg-user"}><span className="msg-role">{m.role === "user" ? (isAr ? "أنت" : "You") : (isAr ? "الوكلاء" : "Agent")}</span><span className="msg-text">{m.text?.slice?.(0, 300) ?? m.text}</span></li>)}</ul></div> : null}
         </div>
       </aside>
     </div>

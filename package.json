@@ -17,6 +17,7 @@
     "verify:integration-boundary": "node scripts/verify-integration-boundary.mjs",
     "verify:workspace-e2e": "node scripts/verify-workspace-e2e.mjs",
     "audit:jsdoc": "node scripts/audit-jsdoc-coverage.mjs",
+    "package:linux": "bash scripts/package-linux-desktop.sh",
     "db:push": "drizzle-kit generate && drizzle-kit migrate"
   },
   "dependencies": {
