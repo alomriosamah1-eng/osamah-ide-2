@@ -1,11 +1,21 @@
 {
   "name": "osamah-ide-ui",
+  "productName": "Osamah IDE",
+  "desktopName": "com.osamah.ide",
   "version": "1.0.0",
+  "description": "Arabic-first AI-native workspace with OpenCode, programming, presentations, and second-brain workflows.",
+  "author": {
+    "name": "Osamah IDE",
+    "email": "alomriosamah1-eng@users.noreply.github.com"
+  },
   "type": "module",
+  "main": "electron/main.cjs",
   "license": "MIT",
   "scripts": {
     "dev": "NODE_ENV=development tsx watch server/_core/index.ts",
     "build": "vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+    "desktop:build": "pnpm check && pnpm test && pnpm build && electron-builder --linux AppImage deb --publish never",
+    "desktop:dir": "pnpm build && electron-builder --linux dir --publish never",
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc --noEmit",
     "format": "prettier --write .",
@@ -86,6 +96,42 @@
     "wouter": "^3.3.5",
     "zod": "^4.1.12"
   },
+  "build": {
+    "appId": "com.osamah.ide",
+    "productName": "Osamah IDE",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/main.cjs",
+      "package.json",
+      "!third_party"
+    ],
+    "extraResources": [
+      {
+        "from": "third_party",
+        "to": "third_party",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "icon": "resources/icons",
+      "syncDesktopName": true,
+      "category": "Development",
+      "executableName": "osamah-ide",
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    },
+    "deb": {
+      "priority": "optional"
+    }
+  },
   "devDependencies": {
     "@builder.io/vite-plugin-jsx-loc": "^0.1.1",
     "@tailwindcss/typography": "^0.5.15",
@@ -99,6 +145,8 @@
     "add": "^2.0.6",
     "autoprefixer": "^10.4.20",
     "drizzle-kit": "^0.31.4",
+    "electron": "44.0.0",
+    "electron-builder": "26.15.3",
     "esbuild": "^0.25.0",
     "pnpm": "^10.15.1",
     "postcss": "^8.4.47",
