@@ -15,6 +15,16 @@ export type OpenCodeModel = {
   name: string;
   variant?: string;
   supportsTools: boolean;
+  reasoning?: boolean;
+  temperature?: boolean;
+  attachment?: boolean;
+  contextLimit?: number;
+  outputLimit?: number;
+  modalities?: {
+    input: string[];
+    output: string[];
+  };
+  status?: "alpha" | "beta" | "deprecated";
 };
 
 /** Renderable text message normalized from OpenCode session output. */
@@ -108,6 +118,18 @@ export function mapOpenCodeModels(payload: unknown): OpenCodeModel[] {
       name: item.name,
       variant: typeof item.variant === "string" ? item.variant : undefined,
       supportsTools: capabilities?.tools === true,
+      reasoning: capabilities?.reasoning === true ? true : undefined,
+      temperature: capabilities?.temperature === true ? true : undefined,
+      attachment: capabilities?.attachment === true ? true : undefined,
+      contextLimit: isRecord(item.limit) && typeof item.limit.context === "number" ? item.limit.context : undefined,
+      outputLimit: isRecord(item.limit) && typeof item.limit.output === "number" ? item.limit.output : undefined,
+      modalities: isRecord(item.modalities)
+        ? {
+            input: Array.isArray(item.modalities.input) ? item.modalities.input.filter((value): value is string => typeof value === "string") : [],
+            output: Array.isArray(item.modalities.output) ? item.modalities.output.filter((value): value is string => typeof value === "string") : [],
+          }
+        : undefined,
+      status: item.status === "alpha" || item.status === "beta" || item.status === "deprecated" ? item.status : undefined,
     }];
   });
 }
