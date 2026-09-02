@@ -319,7 +319,10 @@ try {
   await client.secondBrain.item.remove.mutate({ id: noteId });
   noteId = undefined;
 
-  await client.workspace.file.remove.mutate({ id: fileId });
+  const removedFileId = fileId;
+  await client.workspace.file.remove.mutate({ id: removedFileId });
+  const filesAfterDelete = await client.workspace.file.list.query({ projectId });
+  if (filesAfterDelete.some(item => item.id === removedFileId)) throw new Error("File deletion was not persisted.");
   fileId = undefined;
   await client.workspace.task.remove.mutate({ id: taskId });
   taskId = undefined;

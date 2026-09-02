@@ -7,6 +7,7 @@ import { skipToken } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTheme } from "@/contexts/ThemeContext";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { filterWorkspaceCommands, getWorkspaceCommands } from "@/lib/command-palette";
 import { catalogFromEmbeddedOpenCode, getOpenCodeModel, getOpenCodeModelPlaceholder, initialOpenCodeCatalog } from "@/lib/opencode-contract";
 import { cn } from "@/lib/utils";
@@ -24,6 +25,7 @@ import { getWorkspaceProjectCreatePayload } from "@/lib/workspace-project-create
 import { getWorkspaceProjectUpdatePayload } from "@/lib/workspace-project-update";
 import { getWorkspaceFileCreatePayload } from "@/lib/workspace-file-create";
 import { getWorkspaceFileRenamePayload } from "@/lib/workspace-file-rename";
+import { canConfirmWorkspaceDelete, canOpenWorkspaceDeleteConfirmation, type WorkspaceDeleteTarget } from "@/lib/workspace-delete-confirmation";
 import ServerSettingsView, { type PreferencePatch, type SavedPreferences } from "@/components/ServerSettingsView";
 import PresentationStudio from "@/components/PresentationStudio";
 import "./opencode-model.css";
@@ -991,6 +993,7 @@ function Programming({ lang }: { lang: Language }) {
   const [fileLanguageDraft, setFileLanguageDraft] = useState("");
   const [isFileRenameFormOpen, setIsFileRenameFormOpen] = useState(false);
   const [fileRenamePathDraft, setFileRenamePathDraft] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState<WorkspaceDeleteTarget | null>(null);
   const [operationError, setOperationError] = useState<string | null>(null);
   const theiaStatusQuery = trpc.theia.status.useQuery(undefined, { retry: false });
   const theiaSourceQuery = trpc.theia.source.useQuery(undefined, { retry: false });
@@ -1036,6 +1039,7 @@ function Programming({ lang }: { lang: Language }) {
       setSelectedProjectId(null);
       setSelectedFileId(null);
       setDraftContent("");
+      setDeleteTarget(null);
       await refreshWorkspace();
     },
     onError: showFailure,
@@ -1066,6 +1070,7 @@ function Programming({ lang }: { lang: Language }) {
     onSuccess: async () => {
       setSelectedFileId(null);
       setDraftContent("");
+      setDeleteTarget(null);
       await refreshWorkspace();
     },
     onError: showFailure,
@@ -1104,6 +1109,7 @@ function Programming({ lang }: { lang: Language }) {
     path: fileRenamePathDraft,
     isSubmitting: isMutating,
   }) : null;
+  const hasConflictingWorkspaceForm = isProjectCreateFormOpen || isProjectEditFormOpen || isFileCreateFormOpen || isFileRenameFormOpen || Boolean(deleteTarget);
 
   const confirmEditorTransition = (transition: UnsavedFileTransition) => {
     if (!shouldConfirmUnsavedFileTransition({ hasActiveFile: Boolean(activeFile), hasUnsavedChanges: hasUnsavedFileChanges, transition })) return true;
@@ -1209,6 +1215,22 @@ function Programming({ lang }: { lang: Language }) {
     setOperationError(null);
     renameFile.mutate({ id: activeFile.id, ...fileRenamePayload });
   };
+  const openWorkspaceDeleteConfirmation = (target: WorkspaceDeleteTarget) => {
+    if (!canOpenWorkspaceDeleteConfirmation({ id: target.id, isMutating, hasConflictingForm: hasConflictingWorkspaceForm })) return;
+    setOperationError(null);
+    setDeleteTarget(target);
+  };
+  const closeWorkspaceDeleteConfirmation = () => {
+    if (isMutating) return;
+    setDeleteTarget(null);
+  };
+  const confirmWorkspaceDelete = () => {
+    const target = deleteTarget;
+    if (!target || !canConfirmWorkspaceDelete(target, isMutating)) return;
+    setOperationError(null);
+    if (target.kind === "project") removeProject.mutate({ id: target.id });
+    else removeFile.mutate({ id: target.id });
+  };
   const askForTask = () => {
     const title = window.prompt(isAr ? "عنوان المهمة" : "Task title");
     if (!title?.trim()) return;
@@ -1255,7 +1277,7 @@ function Programming({ lang }: { lang: Language }) {
               {projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}
             </select>
             <button type="button" onClick={openProjectEditForm} disabled={!activeProject || isMutating || isProjectCreateFormOpen || isProjectEditFormOpen || isFileCreateFormOpen || isFileRenameFormOpen} aria-label={isAr ? "تحرير بيانات المشروع" : "Edit project metadata"}><MoreHorizontal size={14} /></button>
-            <button type="button" className="danger-icon-action" onClick={() => { if (activeProject && window.confirm(isAr ? "سيُحذف المشروع وكل ملفاته ومهامه نهائياً. هل تريد المتابعة؟" : "This will permanently delete the project, its files, and tasks. Continue?")) removeProject.mutate({ id: activeProject.id }); }} disabled={!activeProject || isMutating || isProjectEditFormOpen || isFileCreateFormOpen || isFileRenameFormOpen} aria-label={isAr ? "حذف المشروع" : "Delete project"}><Trash2 size={14} /></button>
+            <button type="button" className="danger-icon-action" onClick={() => activeProject && openWorkspaceDeleteConfirmation({ kind: "project", id: activeProject.id, label: activeProject.name })} disabled={!activeProject || isMutating || hasConflictingWorkspaceForm} aria-label={isAr ? "حذف المشروع" : "Delete project"}><Trash2 size={14} /></button>
           </div>
           {isProjectCreateFormOpen ? <form className="project-create-form" dir={isAr ? "rtl" : "ltr"} onSubmit={(event) => { event.preventDefault(); submitProjectCreate(); }}>
             <label>
@@ -1339,7 +1361,7 @@ function Programming({ lang }: { lang: Language }) {
             <div className="workspace-editor-actions">
               <span>{activeFile.language ?? (isAr ? "نص عادي" : "Plain text")}</span>
               <button type="button" onClick={openFileRenameForm} disabled={isMutating || isFileCreateFormOpen || isFileRenameFormOpen || isProjectCreateFormOpen || isProjectEditFormOpen}>{isAr ? "إعادة تسمية" : "Rename"}</button>
-              <button type="button" className="danger-action" onClick={() => { if (window.confirm(isAr ? "حذف هذا الملف نهائياً؟" : "Delete this file permanently?")) removeFile.mutate({ id: activeFile.id }); }} disabled={isMutating}>{isAr ? "حذف" : "Delete"}</button>
+              <button type="button" className="danger-action" onClick={() => openWorkspaceDeleteConfirmation({ kind: "file", id: activeFile.id, label: activeFile.path })} disabled={isMutating || hasConflictingWorkspaceForm}>{isAr ? "حذف" : "Delete"}</button>
               <button type="button" className="save-action" onClick={() => saveFile.mutate({ id: activeFile.id, content: draftContent, language: activeFile.language })} disabled={isMutating || draftContent === (activeFile.content ?? "")}>{saveFile.isPending ? (isAr ? "يُحفظ…" : "Saving…") : (isAr ? "حفظ" : "Save")}</button>
             </div>
           </div> : <div className="workspace-empty-editor"><FileCode2 size={28} /><strong>{isAr ? "افتح ملفاً أو أنشئ ملفاً جديداً" : "Open a file or create a new one"}</strong><button type="button" onClick={openFileCreateForm} disabled={!activeProject || isMutating || isFileCreateFormOpen || isFileRenameFormOpen || isProjectCreateFormOpen || isProjectEditFormOpen}>{isAr ? "ملف جديد" : "New file"}</button></div>}
@@ -1350,6 +1372,24 @@ function Programming({ lang }: { lang: Language }) {
         <div className="terminal-tabs"><span className="active-terminal">{isAr ? "المهام" : "TASKS"}</span><button type="button" onClick={askForTask} disabled={isMutating}><Plus size={14} /> {isAr ? "مهمة" : "Task"}</button></div>
         <div className="workspace-task-list" dir={isAr ? "rtl" : "ltr"}>{tasksQuery.isLoading ? <p>{isAr ? "تُحمّل المهام…" : "Loading tasks…"}</p> : null}{!tasksQuery.isLoading && (tasksQuery.data?.length ?? 0) === 0 ? <p>{isAr ? "لا توجد مهام لهذا المشروع." : "No tasks for this project."}</p> : null}{tasksQuery.data?.map(task => <div className="workspace-task-row" key={task.id}><button type="button" className={task.status === "done" ? "task-complete" : ""} onClick={() => updateTask.mutate({ id: task.id, status: task.status === "done" ? "todo" : "done" })} disabled={isMutating} aria-label={isAr ? "تغيير حالة المهمة" : "Change task status"}>{task.status === "done" ? "✓" : "○"}</button><span>{task.title}</span><small>{task.status === "in_progress" ? (isAr ? "قيد التنفيذ" : "In progress") : task.status === "done" ? (isAr ? "مكتملة" : "Done") : (isAr ? "للقيام" : "To do")}</small><button type="button" className="danger-icon-action" onClick={() => { if (window.confirm(isAr ? "حذف هذه المهمة نهائياً؟" : "Delete this task permanently?")) removeTask.mutate({ id: task.id }); }} disabled={isMutating} aria-label={isAr ? "حذف المهمة" : "Delete task"}><Trash2 size={13} /></button></div>)}</div>
       </section>
+      <AlertDialog open={Boolean(deleteTarget)} onOpenChange={open => { if (!open) closeWorkspaceDeleteConfirmation(); }}>
+        <AlertDialogContent dir={isAr ? "rtl" : "ltr"}>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{deleteTarget?.kind === "project" ? (isAr ? "حذف المشروع؟" : "Delete project?") : (isAr ? "حذف الملف؟" : "Delete file?")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteTarget?.kind === "project"
+                ? (isAr ? `سيُحذف «${deleteTarget.label}» وكل ملفاته ومهامه نهائياً. لا يمكن التراجع عن ذلك.` : `“${deleteTarget?.label ?? ""}” and all of its files and tasks will be permanently deleted. This cannot be undone.`)
+                : (isAr ? `سيُحذف الملف «${deleteTarget?.label ?? ""}» نهائياً. لا يمكن التراجع عن ذلك.` : `“${deleteTarget?.label ?? ""}” will be permanently deleted. This cannot be undone.`)}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isMutating}>{isAr ? "إلغاء" : "Cancel"}</AlertDialogCancel>
+            <AlertDialogAction disabled={!canConfirmWorkspaceDelete(deleteTarget, isMutating)} onClick={event => { event.preventDefault(); confirmWorkspaceDelete(); }}>
+              {removeProject.isPending || removeFile.isPending ? (isAr ? "يُحذف…" : "Deleting…") : (isAr ? "حذف نهائياً" : "Delete permanently")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
