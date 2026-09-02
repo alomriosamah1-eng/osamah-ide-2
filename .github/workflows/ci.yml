@@ -1,0 +1,47 @@
+name: CI - Quality Gates & Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    name: Typecheck, Test & Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install pnpm
+        run: npm install -g pnpm@10
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      - name: TypeScript Typecheck
+        run: pnpm run check
+
+      - name: Run Test Suite
+        run: pnpm run test
+
+      - name: Verify Integration Boundary
+        run: pnpm run verify:integration-boundary
+
+      - name: Audit JSDoc Coverage
+        run: pnpm run audit:jsdoc
+
+      - name: Build Production Bundle
+        run: pnpm run build

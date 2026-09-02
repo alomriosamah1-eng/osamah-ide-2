@@ -1,4 +1,5 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
+import { ENV } from "./_core/env";
 import {
   createLocalSession,
   hashLocalPassword,
@@ -8,6 +9,9 @@ import {
 } from "./localAuth";
 
 describe("local account credentials", () => {
+  beforeAll(() => {
+    ENV.cookieSecret = "test-jwt-secret-key-for-local-auth-32-chars-long";
+  });
   it("derives and verifies passwords without retaining the original value", async () => {
     const hash = await hashLocalPassword("Sufficiently-Strong-Password");
     expect(hash).not.toContain("Sufficiently-Strong-Password");

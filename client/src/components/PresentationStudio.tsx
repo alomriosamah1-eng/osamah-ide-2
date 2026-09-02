@@ -41,6 +41,72 @@ export default function PresentationStudio({ lang }: { lang: Language }) {
   const slidesLoadError = selectedDeck && slidesQuery.isError ? getPresentationLoadErrorMessage("slides", lang, slidesQuery.error) : null;
   const presentonLoadError = presentonStatus.isError ? getPresentationLoadErrorMessage("presenton", lang, presentonStatus.error) : null;
 
+  // OpenCode integration inside presentation studio
+  const [opencodeSessionId, setOpencodeSessionId] = useState<string | null>(null);
+  const [opencodeDraft, setOpencodeDraft] = useState("");
+  const [opencodeResponse, setOpencodeResponse] = useState("");
+  const [opencodeBusy, setOpencodeBusy] = useState(false);
+  const [awaitingAgentResponse, setAwaitingAgentResponse] = useState(false);
+  const modelsQuery = trpc.opencode.models.useQuery(undefined, { retry: false });
+  const createSession = trpc.opencode.session.create.useMutation({ onSuccess: d => setOpencodeSessionId(d.id) });
+  const sendToSession = trpc.opencode.session.send.useMutation({ onSuccess: () => { setOpencodeBusy(false); setOpencodeDraft(""); } });
+  const msgQuery = trpc.opencode.session.messages.useQuery(opencodeSessionId ? { sessionID: opencodeSessionId } : skipToken, { enabled: Boolean(opencodeSessionId), retry: false });
+
+  const handleGenerateFromAgent = async () => {
+    const prompt = isAr
+      ? `أنشئ عرضًا تقديميًا بناءً على السياق الحالي: عرض "${selectedDeck?.title ?? ""}"، شريحة "${selectedSlide?.title ?? ""}"، المحتوى الحالي: "${selectedSlide?.content ?? ""}".`
+      : `Generate presentation content based on current context: deck "${selectedDeck?.title ?? ""}", slide "${selectedSlide?.title ?? ""}", current content: "${selectedSlide?.content ?? ""}".`;
+    setOpencodeDraft(prompt);
+    await askOpenCode();
+  };
+
+  useEffect(() => {
+    if (awaitingAgentResponse && Array.isArray(msgQuery.data) && msgQuery.data.length > 0) {
+      const lastMsg = msgQuery.data[msgQuery.data.length - 1];
+      if (lastMsg && lastMsg.role === "assistant" && typeof lastMsg.text === "string") {
+        const text = lastMsg.text.trim();
+        if (text) {
+          setDraftContent(text);
+          if (selectedSlide) {
+            updateSlide.mutate({ id: selectedSlide.id, title: draftTitle.trim() || null, content: text, speakerNotes: draftNotes });
+          }
+        }
+      }
+      setAwaitingAgentResponse(false);
+      setOpencodeBusy(false);
+    }
+  }, [msgQuery.data, awaitingAgentResponse, selectedSlide, draftTitle, draftNotes]);
+
+  const askOpenCode = async () => {
+    const text = opencodeDraft.trim();
+    if (!text) return;
+    setOpencodeBusy(true);
+    try {
+      let sid = opencodeSessionId;
+      if (!sid) {
+        const discovered = modelsQuery.data ?? [];
+        const model = discovered.find((m) => m.providerID === "opencode" && m.id === "x-preview-f-free") ?? discovered[0];
+        if (!model) {
+          setOpencodeResponse(isAr ? "لم يُكتشف نموذج OpenCode." : "No OpenCode model discovered.");
+          setOpencodeBusy(false);
+          return;
+        }
+        const res = await createSession.mutateAsync({ model: { id: model.id, providerID: model.providerID, variant: model.variant } });
+        sid = res.id;
+        setOpencodeSessionId(sid);
+      }
+      const contextText = `${isAr ? "العرض: " : "Deck: "}${selectedDeck?.title ?? "—"} | ${isAr ? "شريحة: " : "Slide: "}${selectedSlide?.title ?? "—"} | ${isAr ? "المحتوى: " : "Content: "}${selectedSlide?.content ?? "—"}`;
+      await sendToSession.mutateAsync({ sessionID: sid, text: text + "\n" + contextText, section: "presentations" });
+      setAwaitingAgentResponse(true);
+      setOpencodeResponse(isAr ? "جارٍ استقبال الرد من الوكيل..." : "Receiving agent response...");
+      setTimeout(() => { void msgQuery.refetch(); }, 2500);
+    } catch (e: any) {
+      setOpencodeResponse(isAr ? "فشل الإرسال: " + (e.message ?? "") : "Send failed: " + (e.message ?? ""));
+    } finally {
+      setOpencodeBusy(false);
+    }
+  };
+
   useEffect(() => {
     const first = decksQuery.data?.[0];
     if (!selectedDeckId && first) setSelectedDeckId(first.id);
@@ -109,7 +175,7 @@ export default function PresentationStudio({ lang }: { lang: Language }) {
     <div className="presentation-ribbon">
       <div className="deck-name"><Presentation size={17} /><span>{selectedDeck?.title ?? (isAr ? "العروض" : "Presentations")}</span><span className="saved-state">{isMutating ? <Loader2 size={13} className="spin" /> : <Save size={13} />} {isMutating ? (isAr ? "جارٍ الحفظ" : "Saving") : (isAr ? "محفوظ خادمياً" : "Server-saved")}</span></div>
       <div className="ribbon-menu"><button type="button" className="ribbon-active" onClick={askForDeck} disabled={isMutating}><Plus size={14} /> {isAr ? "عرض جديد" : "New deck"}</button>{selectedDeck ? <button type="button" onClick={askToRenameDeck} disabled={isMutating}>{isAr ? "إعادة تسمية" : "Rename"}</button> : null}</div>
-      <div className="ribbon-actions"><button type="button" title={generationAvailable ? undefined : (isAr ? "التقديم/التوليد غير مهيأ في Presenton." : "Presenton presentation generation is not configured.")} disabled={!generationAvailable}><Play size={14} /> {isAr ? "تقديم" : "Present"}</button>{selectedDeck ? <button type="button" className="danger-icon-action" onClick={() => { if (confirmSlideTransition("delete-deck") && window.confirm(isAr ? "حذف العرض وكل شرائحه؟" : "Delete this presentation and its slides?")) removeDeck.mutate({ id: selectedDeck.id }); }} disabled={isMutating} aria-label={isAr ? "حذف العرض" : "Delete presentation"}><Trash2 size={16} /></button> : null}</div>
+      <div className="ribbon-actions"><button type="button" onClick={handleGenerateFromAgent} title={generationAvailable ? undefined : (isAr ? "التقديم/التوليد غير مهيأ في Presenton." : "Presenton presentation generation is not configured.")} disabled={!generationAvailable}><Play size={14} /> {isAr ? "تقديم" : "Present"}</button>{selectedDeck ? <button type="button" className="danger-icon-action" onClick={() => { if (confirmSlideTransition("delete-deck") && window.confirm(isAr ? "حذف العرض وكل شرائحه؟" : "Delete this presentation and its slides?")) removeDeck.mutate({ id: selectedDeck.id }); }} disabled={isMutating} aria-label={isAr ? "حذف العرض" : "Delete presentation"}><Trash2 size={16} /></button> : null}</div>
     </div>
     <div className={`presenton-status presenton-${presentonLoadError ? "error" : (presentonStatus.data?.phase ?? "checking")}`} role="status" aria-live="polite"><span>{presentonLoadError ? <><CircleAlert size={15} /> <strong>{presentonLoadError}</strong></> : <>{isAr ? "حالة Presenton" : "Presenton status"}: <strong>{presentonStatus.data?.detail ?? (isAr ? "يُفحص الجسر الخادمي…" : "Checking server bridge…")}</strong></>}</span><button type="button" onClick={() => void presentonStatus.refetch()} disabled={presentonStatus.isFetching}><RefreshCw size={13} /> {presentonLoadError ? (isAr ? "أعد المحاولة" : "Retry") : (isAr ? "تحديث" : "Refresh")}</button></div>
     <div className="presentation-grid">
@@ -122,6 +188,15 @@ export default function PresentationStudio({ lang }: { lang: Language }) {
         {selectedDeck && selectedSlide ? <><div className="canvas-tools"><button type="button" onClick={addSlide} disabled={isMutating}><Plus size={14} /> {isAr ? "شريحة" : "Slide"}</button><button type="button" onClick={() => moveSlide(-1)} disabled={isMutating || selectedSlide.position === 0} aria-label={isAr ? "تحريك لأعلى" : "Move up"}>{isAr ? <ChevronRight size={15} /> : <ChevronLeft size={15} />}</button><button type="button" onClick={() => moveSlide(1)} disabled={isMutating || selectedSlide.position === (slidesQuery.data?.length ?? 1) - 1} aria-label={isAr ? "تحريك لأسفل" : "Move down"}>{isAr ? <ChevronLeft size={15} /> : <ChevronRight size={15} />}</button><button type="button" className="danger-action" onClick={() => { if (confirmSlideTransition("delete-slide") && window.confirm(isAr ? "حذف هذه الشريحة؟" : "Delete this slide?")) removeSlide.mutate({ id: selectedSlide.id }); }} disabled={isMutating}><Trash2 size={14} /> {isAr ? "حذف" : "Delete"}</button><button type="button" className="save-action" onClick={saveSlide} disabled={isMutating || !hasSlideChanges}><Save size={14} /> {isAr ? "حفظ" : "Save"}</button></div><div className="presentation-editor-fields"><label>{isAr ? "عنوان الشريحة" : "Slide title"}<input value={draftTitle} onChange={event => setDraftTitle(event.target.value)} disabled={isMutating} /></label><label>{isAr ? "محتوى الشريحة" : "Slide content"}<textarea value={draftContent} onChange={event => setDraftContent(event.target.value)} disabled={isMutating} /></label></div><div className="speaker-notes"><button type="button" onClick={() => setNotesExpanded(expanded => !expanded)} aria-expanded={notesExpanded}><ChevronDown size={15} /> {isAr ? "ملاحظات المتحدث" : "Speaker notes"}</button>{notesExpanded ? <textarea value={draftNotes} onChange={event => setDraftNotes(event.target.value)} disabled={isMutating} aria-label={isAr ? "ملاحظات المتحدث" : "Speaker notes"} /> : null}</div></> : <div className="presentation-empty-workbench"><Presentation size={34} /><strong>{selectedDeck ? (isAr ? "اختر شريحة أو أنشئ واحدة" : "Select or create a slide") : (isAr ? "اختر عرضاً أو أنشئ عرضاً جديداً" : "Select or create a presentation")}</strong>{selectedDeck ? <button type="button" onClick={addSlide}>{isAr ? "إضافة شريحة" : "Add slide"}</button> : <button type="button" onClick={askForDeck}>{isAr ? "إنشاء عرض" : "Create presentation"}</button>}</div>}
         {actionError ? <p className="workspace-operation-error" role="alert"><CircleAlert size={15} /> {actionError.message}</p> : null}
       </section>
+      <aside className="opencode-integrated-panel glass-panel" dir={isAr ? "rtl" : "ltr"} aria-label={isAr ? "مساعد OpenCode للعروض" : "OpenCode assistant for presentations"}>
+        <div className="opencode-panel-header"><strong>{isAr ? "مساعد OpenCode" : "OpenCode Assistant"}</strong><span className="opencode-status">{opencodeSessionId ? (isAr ? "جلسة نشطة" : "Active session") : (isAr ? "لا جلسة" : "No session")}</span></div>
+        <div className="opencode-panel-body">
+          <textarea value={opencodeDraft} onChange={e => setOpencodeDraft(e.target.value)} disabled={opencodeBusy} rows={3} aria-label={isAr ? "رسالة للمساعد" : "Message to assistant"} placeholder={isAr ? "اسأل عن العرض أو الشريحة الحالية..." : "Ask about current deck or slide..."} />
+          <button type="button" onClick={askOpenCode} disabled={opencodeBusy || !opencodeDraft.trim()} className="opencode-send-btn">{opencodeBusy ? (isAr ? "جارٍ الإرسال…" : "Sending...") : (isAr ? "إرسال إلى OpenCode" : "Send to OpenCode")}</button>
+          {opencodeResponse ? <div className="opencode-response"><strong>{isAr ? "الرد / الحالة:" : "Response / Status:"}</strong> <span>{opencodeResponse}</span></div> : null}
+          {Array.isArray(msgQuery.data) && msgQuery.data.length > 0 ? <div className="opencode-messages"><strong>{isAr ? "سجل الرسائل:" : "Message log:"}</strong><ul>{msgQuery.data.map((m, i) => <li key={i} className={m.role === "assistant" ? "msg-assistant" : "msg-user"}><span className="msg-role">{m.role === "user" ? (isAr ? "أنت" : "You") : (isAr ? "الوكلاء" : "Agent")}</span><span className="msg-text">{m.text?.slice?.(0, 300) ?? m.text}</span></li>)}</ul></div> : null}
+        </div>
+      </aside>
     </div>
   </div>;
 }

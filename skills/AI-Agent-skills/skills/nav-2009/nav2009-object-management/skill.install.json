@@ -1,0 +1,14 @@
+{
+  "requirements": [
+    {
+      "name": "NAV 2009 Classic client (finsql.exe)",
+      "detectPaths": [
+        "C:\\Program Files (x86)\\Microsoft Dynamics NAV\\60\\Classic\\finsql.exe",
+        "C:\\Program Files\\Microsoft Dynamics NAV\\60\\Classic\\finsql.exe"
+      ],
+      "warnOnly": true,
+      "help": "The manual Object Designer procedures require the NAV 2009 Classic client on the machine doing the work. It ships with the NAV 2009 installation media and cannot be auto-installed.",
+      "url": "https://learn.microsoft.com/en-us/previous-versions/dynamicsnav-2009/"
+    }
+  ]
+}

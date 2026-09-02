@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Osamah IDE
+GenericName=AI-Powered IDE & Knowledge Observatory
+Comment=Next-generation IDE integrating Programming, Presentations, and Second Brain with AI Agents
+Exec=osamah-ide %U
+Icon=osamah-ide
+Terminal=false
+Categories=Development;IDE;TextEditor;
+StartupNotify=true
+StartupWMClass=OsamahIDE
+Keywords=IDE;Programming;AI;Code;Presentations;Knowledge;

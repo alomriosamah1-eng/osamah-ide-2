@@ -1,0 +1,29 @@
+[
+  {
+    "skills": ["ax2012-aos-crash-triage"],
+    "query": "Our AX AOS service on AOS02 and AOS03 crashed and restarted this morning — why?",
+    "expected_behavior": [
+      "Runs Invoke-AosCrashTriage.ps1 with pwsh against the named AOS hosts (credential prompted, never on the command line)",
+      "Classifies the crash first: separates access_violation (Event 1000 / 0xc0000005, with module/exception_meaning/offset) from forced_termination (Event 110 session-id collision), and does NOT conflate them or call Event 180 a cause",
+      "Reports correlation, not causation: states what the event log can and cannot prove, checks dump_readiness + recent_hotfixes, and fails loud on any unreachable/auth_failed or truncated host"
+    ]
+  },
+  {
+    "skills": ["ax2012-aos-crash-triage"],
+    "query": "When the AOS died it kicked every AX user off the RDS farm — can you prove that and find the first domino? Here are the AOS and WTS host lists.",
+    "expected_behavior": [
+      "Passes -AosListFile and -ClientListFile so client (Ax32.exe) crashes are correlated against AOS-down events",
+      "Uses summary.cascade_correlation to show client crashes clustered at AOS-down times as an EFFECT (clients dropped because the AOS went down), not as proof of what triggered the first crash",
+      "Identifies the first AOS-down event and its class, but does not assert a root cause from event timing — for a forced_termination it points upstream to orphaned SysClientSessions / an AOS-to-DB interruption; for a signature-less access_violation it recommends capturing a dump"
+    ]
+  },
+  {
+    "skills": ["ax2012-aos-crash-triage"],
+    "query": "The AOS keeps crashing with 0xc0000005 and the event log shows nothing obvious — what now?",
+    "expected_behavior": [
+      "Checks aos[].dump_readiness; if WER LocalDumps is not configured for Ax32Serv.exe, provides the remediation (DumpType=0 / CustomDumpFlags=0x1B67, or DebugDiag) so the next crash is captured",
+      "Recommends correlating recent_hotfixes / deployments / kernel drift before assuming a kernel defect, and only escalating to a symbolized dump (WinDbg !analyze -v) or a Microsoft case when no signature explains the fault",
+      "Explicitly avoids inventing a root cause from event timing; states 'cause undetermined; dump required' when there is no evidence"
+    ]
+  }
+]
